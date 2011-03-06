@@ -1,0 +1,21 @@
+README for libprocess
+
+Most importantly, if you run into an issue, please send me an email:
+benh@berkeley.edu.
+
+Instructions:
+
+(1) Configure (in a seperate build directory if you prefer).
+
+$ path/to/configure
+
+(2) Build.
+
+$ make
+
+(3) Optional: Build tests or an example.
+
+$ make test
+...
+$ make examples
+$ ./example

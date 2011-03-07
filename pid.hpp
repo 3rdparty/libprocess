@@ -88,11 +88,11 @@ struct PID : UPID
 
 
 // Outputing UPIDs and generating UPIDs using streams.
-std::ostream& operator << (std::ostream&, const struct process::UPID&);
-std::istream& operator >> (std::istream&, struct process::UPID&);
+std::ostream& operator << (std::ostream&, const process::UPID&);
+std::istream& operator >> (std::istream&, process::UPID&);
 
 
 // UPID hash value (for example, to use in Boost's unordered maps).
-std::size_t hash_value(const struct process::UPID&);
+std::size_t hash_value(const process::UPID&);
 
 #endif // __PID_HPP__

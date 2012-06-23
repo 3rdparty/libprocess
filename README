@@ -7,15 +7,20 @@ Instructions:
 
 (1) Configure (in a seperate build directory if you prefer).
 
-$ path/to/configure
+path/to/configure
 
 (2) Build.
 
-$ make
+make
 
-(3) Optional: Build tests or an example.
+(3) Optional: Build some examples.
 
-$ make test
-...
-$ make examples
-$ ./example
+cd examples && make
+
+(4) Optional: Build the Python library (assuming you have the Python
+headers installed in /usr/include/python2.5, otherwise you can update
+swig/Makefile).
+
+cd swig && make python
+
+

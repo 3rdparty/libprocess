@@ -72,5 +72,8 @@ libprocess_la_SOURCES += $(top_srcdir)/include/process/clock.hpp	\
 check_PROGRAMS = tests
 
 tests_SOURCES = src/tests.cpp
-tests_CPPFLAGS = -I$(GTEST)/include -I$(GMOCK)/include $(libprocess_la_CPPFLAGS)
+tests_CPPFLAGS = -I$(GTEST)/include -I$(GMOCK)/include	\
+	$(libprocess_la_CPPFLAGS)
 tests_LDADD = third_party/libgmock.la libprocess.la
+
+# TODO(benh): Fix shared builds (tests need libglog, libev, etc).

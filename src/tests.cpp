@@ -1006,7 +1006,7 @@ class HttpProcess : public Process<HttpProcess>
 public:
   HttpProcess()
   {
-    route("handler", &HttpProcess::handler);
+    route("/handler", &HttpProcess::handler);
   }
 
   MOCK_METHOD1(handler, Future<HttpResponse>(const HttpRequest&));

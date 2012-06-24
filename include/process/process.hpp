@@ -122,15 +122,19 @@ protected:
   HttpRequestHandler;
 
   // Setup a handler for an HTTP request.
-  void route(
+  bool route(
       const std::string& name,
       const HttpRequestHandler& handler)
   {
-    handlers.http[name] = handler;
+    if (name.find('/') != 0) {
+      return false;
+    }
+    handlers.http[name.substr(1)] = handler;
+    return true;
   }
 
   template <typename T>
-  void route(
+  bool route(
       const std::string& name,
       Future<HttpResponse> (T::*method)(const HttpRequest&))
   {
@@ -140,7 +144,7 @@ protected:
     HttpRequestHandler handler =
       std::tr1::bind(method, dynamic_cast<T*>(this),
                      std::tr1::placeholders::_1);
-    route(name, handler);
+    return route(name, handler);
   }
 
   // Provide the static asset(s) at the specified _absolute_ path for

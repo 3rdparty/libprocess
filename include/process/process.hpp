@@ -117,8 +117,8 @@ protected:
 
   // The default visit implementation for HTTP events invokes
   // installed HTTP handlers. A HTTP handler is any function which
-  // takes an HttpRequest object and returns and HttpResponse.
-  typedef std::tr1::function<Future<HttpResponse>(const HttpRequest&)>
+  // takes an http::Request object and returns an http::Response.
+  typedef std::tr1::function<Future<http::Response>(const http::Request&)>
   HttpRequestHandler;
 
   // Setup a handler for an HTTP request.
@@ -136,7 +136,7 @@ protected:
   template <typename T>
   bool route(
       const std::string& name,
-      Future<HttpResponse> (T::*method)(const HttpRequest&))
+      Future<http::Response> (T::*method)(const http::Request&))
   {
     // Note that we use dynamic_cast here so a process can use
     // multiple inheritance if it sees so fit (e.g., to implement

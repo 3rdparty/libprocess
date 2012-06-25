@@ -1009,7 +1009,7 @@ public:
     route("/handler", &HttpProcess::handler);
   }
 
-  MOCK_METHOD1(handler, Future<HttpResponse>(const HttpRequest&));
+  MOCK_METHOD1(handler, Future<http::Response>(const http::Request&));
 };
 
 
@@ -1020,7 +1020,7 @@ TEST(libprocess, http)
   HttpProcess process;
 
   EXPECT_CALL(process, handler(_))
-    .WillOnce(Return(HttpOKResponse()));
+    .WillOnce(Return(http::OK()));
 
   spawn(process);
 

@@ -1,6 +1,7 @@
 #ifndef __PROCESS_THREAD_HPP__
 #define __PROCESS_THREAD_HPP__
 
+#include <stdio.h>
 #include <pthread.h>
 
 template <typename T>

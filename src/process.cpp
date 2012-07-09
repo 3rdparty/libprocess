@@ -751,7 +751,8 @@ void handle_timeouts(struct ev_loop* loop, ev_timer* _, int revents)
     VLOG(1) << "Handling timeouts up to "
             << std::fixed << std::setprecision(9) << now;
 
-    foreachkey (double timeout, *timeouts) {
+    double timeout;
+    foreachkey (timeout, *timeouts) {
       if (timeout > now) {
         break;
       }

@@ -1,8 +1,9 @@
 #ifndef __PROCESS_THREAD_HPP__
 #define __PROCESS_THREAD_HPP__
 
-#include <stdio.h>
 #include <pthread.h>
+#include <stdio.h> // For perror.
+#include <stdlib.h> // For abort.
 
 template <typename T>
 struct ThreadLocal

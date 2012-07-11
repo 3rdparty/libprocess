@@ -1,6 +1,7 @@
 #ifndef __PROCESS_HTTP_HPP__
 #define __PROCESS_HTTP_HPP__
 
+#include <map>
 #include <string>
 
 namespace process {

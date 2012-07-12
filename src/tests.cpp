@@ -24,12 +24,10 @@
 
 #include "encoder.hpp"
 
-// Definition of a Set action to be used with gmock.
-ACTION_P2(Set, variable, value) { *variable = value; }
-
 using namespace process;
 
 using testing::_;
+using testing::Assign;
 using testing::Return;
 using testing::ReturnArg;
 
@@ -569,7 +567,7 @@ TEST(libprocess, delay)
   TimeoutProcess process;
 
   EXPECT_CALL(process, timeout())
-    .WillOnce(Set(&timeoutCalled, true));
+    .WillOnce(Assign(&timeoutCalled, true));
 
   spawn(process);
 
@@ -610,7 +608,7 @@ TEST(libprocess, order)
   volatile bool timeoutCalled = false;
 
   EXPECT_CALL(process1, timeout())
-    .WillOnce(Set(&timeoutCalled, true));
+    .WillOnce(Assign(&timeoutCalled, true));
 
   spawn(process1);
 
@@ -688,7 +686,7 @@ TEST(libprocess, exited)
   volatile bool exitedCalled = false;
 
   EXPECT_CALL(process, exited(pid))
-    .WillOnce(Set(&exitedCalled, true));
+    .WillOnce(Assign(&exitedCalled, true));
   
   spawn(process);
 
@@ -920,10 +918,10 @@ TEST(libprocess, executor)
   EventReceiver receiver;
 
   EXPECT_CALL(receiver, event1(42))
-    .WillOnce(Set(&event1Called, true));
+    .WillOnce(Assign(&event1Called, true));
 
   EXPECT_CALL(receiver, event2("event2"))
-    .WillOnce(Set(&event2Called, true));
+    .WillOnce(Assign(&event2Called, true));
 
   Executor executor;
 
@@ -967,7 +965,7 @@ TEST(libprocess, remote)
   volatile bool handlerCalled = false;
 
   EXPECT_CALL(process, handler(_, _))
-    .WillOnce(Set(&handlerCalled, true));
+    .WillOnce(Assign(&handlerCalled, true));
 
   spawn(process);
 

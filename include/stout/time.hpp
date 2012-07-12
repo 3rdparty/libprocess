@@ -56,6 +56,7 @@ struct seconds
   double millis() const { return value * 1000; }
   double micros() const { return value * 1000000; }
   double nanos() const { return value * 1000000000; }
+  bool operator < (const seconds& that) const { return value < that.value; }
   const double value;
 };
 
@@ -73,6 +74,7 @@ struct milliseconds
   double secs() const { return value / 1000; }
   double micros() const { return value * 1000; }
   double nanos() const { return value * 1000000; }
+  bool operator < (const milliseconds& that) const { return value < that.value; }
   const double value;
 };
 
@@ -90,6 +92,7 @@ struct microseconds
   double secs() const { return value / 1000000; }
   double millis() const { return value / 1000; }
   double nanos() const { return value * 1000; }
+  bool operator < (const microseconds& that) const { return value < that.value; }
   const double value;
 };
 
@@ -107,6 +110,7 @@ struct nanoseconds
   double secs() const { return value / 1000000000; }
   double millis() const { return value / 1000000; }
   double micros() const { return value / 1000; }
+  bool operator < (const nanoseconds& that) const { return value < that.value; }
   const double value;
 };
 

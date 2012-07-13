@@ -687,7 +687,7 @@ TEST(Process, exited)
 
   EXPECT_CALL(process, exited(pid))
     .WillOnce(Assign(&exitedCalled, true));
-  
+
   spawn(process);
 
   terminate(pid);

@@ -13,7 +13,7 @@ class StatisticsProcess;
 
 // Provides an in-memory time series of statistics over some window
 // (values are truncated outside of the window, but no limit is
-// currently placed on the number of values witin a window).
+// currently placed on the number of values within a window).
 class Statistics
 {
 public:
@@ -36,7 +36,7 @@ public:
   // Decrements the current value of a statistic. If no statistic was
   // previously present, an initial value of 0.0 is used.
   void decrement(const std::string& name);
-  
+
 private:
   StatisticsProcess* process;
 };

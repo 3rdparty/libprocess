@@ -1,27 +1,26 @@
 #ifndef __STOUT_HASHSET_HPP__
 #define __STOUT_HASHSET_HPP__
 
-#include <tr1/unordered_set>
-
 #include <boost/get_pointer.hpp>
+#include <boost/unordered_set.hpp>
 
 #include "foreach.hpp"
 
 
-// Provides a hash set via TR1 'unordered_set'. For most intensive
+// Provides a hash set via Boost's 'unordered_set'. For most intensive
 // purposes this could be accomplished with a templated typedef, but
 // those don't exist (until C++-11). Also, doing it this way allows us
 // to add functionality, or better naming of existing functionality,
 // etc.
 
 template <typename Elem>
-class hashset : public std::tr1::unordered_set<Elem>
+class hashset : public boost::unordered_set<Elem>
 {
 public:
   // Checks whether this map contains a binding for a key.
   bool contains(const Elem& elem) const
   {
-    return std::tr1::unordered_set<Elem>::count(elem) > 0;
+    return boost::unordered_set<Elem>::count(elem) > 0;
   }
 
   // Checks whether there exists a value in this set that returns the

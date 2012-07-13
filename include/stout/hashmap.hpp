@@ -1,29 +1,28 @@
 #ifndef __STOUT_HASHMAP_HPP__
 #define __STOUT_HASHMAP_HPP__
 
-#include <tr1/unordered_map>
-
 #include <boost/get_pointer.hpp>
+#include <boost/unordered_map.hpp>
 
 #include "hashset.hpp"
 #include "foreach.hpp"
 #include "option.hpp"
 
 
-// Provides a hash map via TR1 'unordered_map'. For most intensive
+// Provides a hash map via Boost's 'unordered_map'. For most intensive
 // purposes this could be accomplished with a templated typedef, but
 // those don't exist (until C++-11). Also, doing it this way allows us
 // to add functionality, or better naming of existing functionality,
 // etc.
 
 template <typename Key, typename Value>
-class hashmap : public std::tr1::unordered_map<Key, Value>
+class hashmap : public boost::unordered_map<Key, Value>
 {
 public:
   // Checks whether this map contains a binding for a key.
   bool contains(const Key& key) const
   {
-    return std::tr1::unordered_map<Key, Value>::count(key) > 0;
+    return boost::unordered_map<Key, Value>::count(key) > 0;
   }
 
   // Checks whether there exists a bound value in this map.

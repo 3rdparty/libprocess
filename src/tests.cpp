@@ -32,7 +32,7 @@ using testing::Return;
 using testing::ReturnArg;
 
 
-TEST(libprocess, thread)
+TEST(Process, thread)
 {
   ThreadLocal<ProcessBase>* _process_ = new ThreadLocal<ProcessBase>();
 
@@ -54,7 +54,7 @@ TEST(libprocess, thread)
 }
 
 
-TEST(libprocess, event)
+TEST(Process, event)
 {
   Event* event = new TerminateEvent(UPID());
   EXPECT_FALSE(event->is<MessageEvent>());
@@ -64,7 +64,7 @@ TEST(libprocess, event)
 }
 
 
-TEST(libprocess, future)
+TEST(Process, future)
 {
   Promise<bool> promise;
   promise.set(true);
@@ -73,7 +73,7 @@ TEST(libprocess, future)
 }
 
 
-TEST(libprocess, associate)
+TEST(Process, associate)
 {
   Promise<bool> promise1;
   Future<bool> future1(true);
@@ -112,7 +112,7 @@ std::string itoa2(int* const& i)
 }
 
 
-TEST(libprocess, then)
+TEST(Process, then)
 {
   Promise<int*> promise;
 
@@ -142,7 +142,7 @@ public:
 };
 
 
-TEST(libprocess, spawn)
+TEST(Process, spawn)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -174,7 +174,7 @@ public:
 };
 
 
-TEST(libprocess, dispatch)
+TEST(Process, dispatch)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -210,7 +210,7 @@ TEST(libprocess, dispatch)
 }
 
 
-TEST(libprocess, defer1)
+TEST(Process, defer1)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -321,7 +321,7 @@ private:
 };
 
 
-TEST(libprocess, defer2)
+TEST(Process, defer2)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -374,7 +374,7 @@ public:
 };
 
 
-TEST(libprocess, handlers)
+TEST(Process, handlers)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -410,7 +410,7 @@ public:
 };
 
 
-TEST(libprocess, inheritance)
+TEST(Process, inheritance)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -441,7 +441,7 @@ TEST(libprocess, inheritance)
 }
 
 
-TEST(libprocess, thunk)
+TEST(Process, thunk)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -486,7 +486,7 @@ public:
 };
 
 
-TEST(libprocess, delegate)
+TEST(Process, delegate)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -527,7 +527,7 @@ TEST(libprocess, delegate)
 // };
 
 
-// TEST(libprocess, terminate)
+// TEST(Process, terminate)
 // {
 //   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -556,7 +556,7 @@ public:
 };
 
 
-TEST(libprocess, delay)
+TEST(Process, delay)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -597,7 +597,7 @@ public:
 };
 
 
-TEST(libprocess, order)
+TEST(Process, order)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -652,7 +652,7 @@ public:
 };
 
 
-TEST(libprocess, donate)
+TEST(Process, donate)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -675,7 +675,7 @@ public:
 };
 
 
-TEST(libprocess, exited)
+TEST(Process, exited)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -699,7 +699,7 @@ TEST(libprocess, exited)
 }
 
 
-TEST(libprocess, select)
+TEST(Process, select)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -725,7 +725,7 @@ TEST(libprocess, select)
 }
 
 
-TEST(libprocess, collect)
+TEST(Process, collect)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -791,7 +791,7 @@ public:
 };
 
 
-TEST(libprocess, settle)
+TEST(Process, settle)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -840,7 +840,7 @@ TEST(libprocess, settle)
 // }
 
 
-TEST(libprocess, pid)
+TEST(Process, pid)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -878,7 +878,7 @@ public:
 };
 
 
-TEST(libprocess, listener)
+TEST(Process, listener)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -908,7 +908,7 @@ public:
 };
 
 
-TEST(libprocess, executor)
+TEST(Process, executor)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -956,7 +956,7 @@ public:
 };
 
 
-TEST(libprocess, remote)
+TEST(Process, remote)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -1011,7 +1011,7 @@ public:
 };
 
 
-TEST(libprocess, http)
+TEST(Process, http)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -1060,7 +1060,7 @@ TEST(libprocess, http)
 }
 
 
-TEST(libprocess, poll)
+TEST(Process, poll)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 

@@ -2,8 +2,9 @@
 # and src/Makefile.am, so we can update the version numbers of
 # third_party packages in exactly one place.
 
-BOOST_VERSION = 1.37.0
+BOOST_VERSION = 1.53.0
 GLOG_VERSION = 0.3.1
 GMOCK_VERSION = 1.6.0
+GPERFTOOLS_VERSION = 2.0
 RY_HTTP_PARSER_VERSION = 1c3624a
 LIBEV_VERSION = 3.8

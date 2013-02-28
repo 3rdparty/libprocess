@@ -18,6 +18,8 @@
 #include <process/pid.hpp>
 #include <process/thread.hpp>
 
+#include <stout/duration.hpp>
+
 namespace process {
 
 class ProcessBase : public EventVisitor
@@ -182,7 +184,8 @@ private:
          BLOCKED,
 	 FINISHED } state;
 
-  // Mutex protecting internals. TODO(benh): Replace with a spinlock.
+  // Mutex protecting internals.
+  // TODO(benh): Consider replacing with a spinlock, on multi-core systems.
   pthread_mutex_t m;
   void lock() { pthread_mutex_lock(&m); }
   void unlock() { pthread_mutex_unlock(&m); }
@@ -247,6 +250,19 @@ void initialize(const std::string& delegate = "");
 
 
 /**
+ * Returns the IP address associated with this instance of the
+ * library.
+ */
+uint32_t ip();
+
+
+/**
+ * Returns the port associated with this instance of the library.
+ */
+uint16_t port();
+
+
+/**
  * Spawn a new process.
  *
  * @param process process to be spawned
@@ -297,9 +313,9 @@ void terminate(const ProcessBase* process, bool inject = true);
  * @param PID id of the process
  * @param secs max time to wait, 0 implies wait for ever
  */
-bool wait(const UPID& pid, double secs = 0);
-bool wait(const ProcessBase& process, double secs = 0);
-bool wait(const ProcessBase* process, double secs = 0);
+bool wait(const UPID& pid, const Duration& duration = Seconds(-1.0));
+bool wait(const ProcessBase& process, const Duration& duration = Seconds(-1.0));
+bool wait(const ProcessBase* process, const Duration& duration = Seconds(-1.0));
 
 
 /**
@@ -329,15 +345,15 @@ inline void terminate(const ProcessBase* process, bool inject)
 }
 
 
-inline bool wait(const ProcessBase& process, double secs)
+inline bool wait(const ProcessBase& process, const Duration& duration)
 {
-  return wait(process.self(), secs);
+  return process::wait(process.self(), duration); // Explicit to disambiguate.
 }
 
 
-inline bool wait(const ProcessBase* process, double secs)
+inline bool wait(const ProcessBase* process, const Duration& duration)
 {
-  return wait(process->self(), secs);
+  return process::wait(process->self(), duration); // Explicit to disambiguate.
 }
 
 

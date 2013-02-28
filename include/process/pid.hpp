@@ -91,11 +91,12 @@ struct PID : UPID
   PID(const T& t) : UPID(static_cast<const ProcessBase&>(t)) {}
 
   template <typename Base>
-  operator PID<Base> ()
+  operator PID<Base> () const
   {
     // Only allow upcasts!
     T* t = NULL;
     Base* base = t;
+    (void)base;  // Eliminate unused base warning.
     PID<Base> pid;
     pid.id = id;
     pid.ip = ip;

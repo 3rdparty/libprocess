@@ -11,6 +11,7 @@
 #include <process/process.hpp>
 #include <process/timeout.hpp>
 
+#include <stout/none.hpp>
 #include <stout/option.hpp>
 
 namespace process {
@@ -22,7 +23,7 @@ namespace process {
 template <typename T>
 Future<std::list<T> > collect(
     std::list<Future<T> >& futures,
-    const Option<Timeout>& timeout = Option<Timeout>::none());
+    const Option<Timeout>& timeout = None());
 
 
 namespace internal {
@@ -56,8 +57,8 @@ public:
 
     typename std::list<Future<T> >::const_iterator iterator;
     for (iterator = futures.begin(); iterator != futures.end(); ++iterator) {
-      const Future<T>& future = *iterator;
-      future.onAny(defer(this, &CollectProcess::waited, future));
+      (*iterator).onAny(
+          defer(this, &CollectProcess::waited, std::tr1::placeholders::_1));
     }
   }
 
@@ -69,6 +70,14 @@ private:
 
   void timedout()
   {
+    // Need to discard all of the futures so any of their associated
+    // resources can get properly cleaned up.
+    typename std::list<Future<T> >::const_iterator iterator;
+    for (iterator = futures.begin(); iterator != futures.end(); ++iterator) {
+      Future<T> future = *iterator; // Need a non-const copy to discard.
+      future.discard();
+    }
+
     promise->fail("Collect failed: timed out");
     terminate(this);
   }
@@ -77,8 +86,10 @@ private:
   {
     if (future.isFailed()) {
       promise->fail("Collect failed: " + future.failure());
+      terminate(this);
     } else if (future.isDiscarded()) {
       promise->fail("Collect failed: future discarded");
+      terminate(this);
     } else {
       assert(future.isReady());
       values.push_back(future.get());
@@ -104,8 +115,9 @@ inline Future<std::list<T> > collect(
     const Option<Timeout>& timeout)
 {
   Promise<std::list<T> >* promise = new Promise<std::list<T> >();
+  Future<std::list<T> > future = promise->future();
   spawn(new internal::CollectProcess<T>(futures, timeout, promise), true);
-  return promise->future();
+  return future;
 }
 
 } // namespace process {

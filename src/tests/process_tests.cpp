@@ -8,6 +8,7 @@
 #include <string>
 #include <sstream>
 
+#include <process/async.hpp>
 #include <process/collect.hpp>
 #include <process/clock.hpp>
 #include <process/defer.hpp>
@@ -17,10 +18,13 @@
 #include <process/filter.hpp>
 #include <process/future.hpp>
 #include <process/gc.hpp>
-#include <process/io.hpp>
 #include <process/process.hpp>
 #include <process/run.hpp>
 #include <process/thread.hpp>
+
+#include <stout/duration.hpp>
+#include <stout/os.hpp>
+#include <stout/stringify.hpp>
 
 #include "encoder.hpp"
 
@@ -28,9 +32,11 @@ using namespace process;
 
 using testing::_;
 using testing::Assign;
+using testing::DoAll;
 using testing::Return;
 using testing::ReturnArg;
 
+// TODO(bmahler): Move tests into their own files as appropriate.
 
 TEST(Process, thread)
 {
@@ -96,6 +102,22 @@ TEST(Process, associate)
 }
 
 
+void onAny(const Future<bool>& future, bool* b)
+{
+  ASSERT_TRUE(future.isReady());
+  *b = future.get();
+}
+
+
+TEST(Process, onAny)
+{
+  bool b = false;
+  Future<bool>(true)
+    .onAny(std::tr1::bind(&onAny, std::tr1::placeholders::_1, &b));
+  EXPECT_TRUE(b);
+}
+
+
 Future<std::string> itoa1(int* const& i)
 {
   std::ostringstream out;
@@ -134,6 +156,74 @@ TEST(Process, then)
 }
 
 
+Future<bool> readyFuture()
+{
+  return true;
+}
+
+
+Future<bool> failedFuture()
+{
+  return Future<bool>::failed("The value is not positive (or zero)");
+}
+
+
+Future<bool> pendingFuture(Future<bool>* future)
+{
+  return *future; // Keep it pending.
+}
+
+
+Future<std::string> second(const bool& b)
+{
+  return b ? std::string("true") : std::string("false");
+}
+
+
+Future<std::string> third(const std::string& s)
+{
+  return s;
+}
+
+
+TEST(Process, chain)
+{
+  Promise<int*> promise;
+
+  Future<std::string> s = readyFuture()
+    .then(std::tr1::bind(&second, std::tr1::placeholders::_1))
+    .then(std::tr1::bind(&third, std::tr1::placeholders::_1));
+
+  s.await();
+
+  ASSERT_TRUE(s.isReady());
+  EXPECT_EQ("true", s.get());
+
+  s = failedFuture()
+    .then(std::tr1::bind(&second, std::tr1::placeholders::_1))
+    .then(std::tr1::bind(&third, std::tr1::placeholders::_1));
+
+  s.await();
+
+  ASSERT_TRUE(s.isFailed());
+
+  Future<bool> future;
+
+  s = pendingFuture(&future)
+    .then(std::tr1::bind(&second, std::tr1::placeholders::_1))
+    .then(std::tr1::bind(&third, std::tr1::placeholders::_1));
+
+  ASSERT_TRUE(s.isPending());
+  ASSERT_TRUE(future.isPending());
+
+  s.discard();
+
+  future.await();
+
+  ASSERT_TRUE(future.isDiscarded());
+}
+
+
 class SpawnProcess : public Process<SpawnProcess>
 {
 public:
@@ -157,6 +247,8 @@ TEST(Process, spawn)
   PID<SpawnProcess> pid = spawn(process);
 
   ASSERT_FALSE(!pid);
+
+  ASSERT_FALSE(wait(pid, Seconds(0)));
 
   terminate(pid);
   wait(pid);
@@ -200,7 +292,7 @@ TEST(Process, dispatch)
   future = dispatch(pid, &DispatchProcess::func1, true);
 
   EXPECT_TRUE(future.get());
-  
+
   future = dispatch(pid, &DispatchProcess::func2, true);
 
   EXPECT_TRUE(future.get());
@@ -233,7 +325,7 @@ TEST(Process, defer1)
   ASSERT_FALSE(!pid);
 
   {
-    deferred<void(void)> func0 =
+    Deferred<void(void)> func0 =
       defer(pid, &DispatchProcess::func0);
     func0();
   }
@@ -241,41 +333,94 @@ TEST(Process, defer1)
   Future<bool> future;
 
   {
-    deferred<Future<bool>(void)> func1 =
+    Deferred<Future<bool>(void)> func1 =
       defer(pid, &DispatchProcess::func1, true);
     future = func1();
     EXPECT_TRUE(future.get());
   }
 
   {
-    deferred<Future<bool>(void)> func2 =
+    Deferred<Future<bool>(void)> func2 =
       defer(pid, &DispatchProcess::func2, true);
     future = func2();
     EXPECT_TRUE(future.get());
   }
 
   {
-    deferred<Future<bool>(void)> func4 =
+    Deferred<Future<bool>(void)> func4 =
       defer(pid, &DispatchProcess::func4, true, 42);
     future = func4();
     EXPECT_TRUE(future.get());
   }
 
   {
-    deferred<Future<bool>(bool)> func4 =
+    Deferred<Future<bool>(bool)> func4 =
       defer(pid, &DispatchProcess::func4, std::tr1::placeholders::_1, 42);
     future = func4(false);
     EXPECT_FALSE(future.get());
   }
 
   {
-    deferred<Future<bool>(int)> func4 =
+    Deferred<Future<bool>(int)> func4 =
       defer(pid, &DispatchProcess::func4, true, std::tr1::placeholders::_1);
     future = func4(42);
     EXPECT_TRUE(future.get());
   }
 
-  // only take const &!
+  // Only take const &!
+
+  terminate(pid);
+  wait(pid);
+}
+
+
+class DeferProcess : public Process<DeferProcess>
+{
+public:
+  Future<std::string> func1(const Future<int>& f)
+  {
+    return f.then(defer(self(), &Self::_func1, std::tr1::placeholders::_1));
+  }
+
+  Future<std::string> func2(const Future<int>& f)
+  {
+    return f.then(defer(self(), &Self::_func2));
+  }
+
+private:
+  Future<std::string> _func1(int i)
+  {
+    return stringify(i);
+  }
+
+  Future<std::string> _func2()
+  {
+    return std::string("42");
+  }
+};
+
+
+TEST(Process, defer2)
+{
+  ASSERT_TRUE(GTEST_IS_THREADSAFE);
+
+  DeferProcess process;
+
+  PID<DeferProcess> pid = spawn(process);
+
+  Future<std::string> f = dispatch(pid, &DeferProcess::func1, 41);
+
+  f.await();
+
+  ASSERT_TRUE(f.isReady());
+  EXPECT_EQ("41", f.get());
+
+  f = dispatch(pid, &DeferProcess::func2, 41);
+
+  f.await();
+
+  ASSERT_TRUE(f.isReady());
+  EXPECT_EQ("42", f.get());
 
   terminate(pid);
   wait(pid);
@@ -289,59 +434,14 @@ void set(T* t1, const T& t2)
 }
 
 
-class DeferProcess : public Process<DeferProcess>
-{
-public:
-  DeferProcess(volatile bool* _bool1, volatile bool* _bool2)
-    : bool1(_bool1), bool2(_bool2) {}
-
-protected:
-  virtual void initialize()
-  {
-    deferred<void(bool)> set1 =
-      defer(std::tr1::function<void(bool)>(
-                std::tr1::bind(&set<volatile bool>,
-                               bool1,
-                               std::tr1::placeholders::_1)));
-
-    set1(true);
-
-    deferred<void(bool)> set2 =
-      defer(std::tr1::function<void(bool)>(
-                std::tr1::bind(&set<volatile bool>,
-                               bool2,
-                               std::tr1::placeholders::_1)));
-
-    set2(true);
-  }
-
-private:
-  volatile bool* bool1;
-  volatile bool* bool2;
-};
-
-
-TEST(Process, defer2)
+TEST(Process, defer3)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
   volatile bool bool1 = false;
   volatile bool bool2 = false;
 
-  DeferProcess process(&bool1, &bool2);
-
-  PID<DeferProcess> pid = spawn(process);
-
-  while (!bool1);
-  while (!bool2);
-
-  terminate(pid);
-  wait(pid);
-
-  bool1 = false;
-  bool2 = false;
-
-  deferred<void(bool)> set1 =
+  Deferred<void(bool)> set1 =
     defer(std::tr1::function<void(bool)>(
               std::tr1::bind(&set<volatile bool>,
                              &bool1,
@@ -349,7 +449,7 @@ TEST(Process, defer2)
 
   set1(true);
 
-  deferred<void(bool)> set2 =
+  Deferred<void(bool)> set2 =
     defer(std::tr1::function<void(bool)>(
               std::tr1::bind(&set<volatile bool>,
                              &bool2,
@@ -509,46 +609,6 @@ TEST(Process, delegate)
 }
 
 
-// class TerminateProcess : public Process<TerminateProcess>
-// {
-// public:
-//   TerminateProcess(Latch* _latch) : latch(_latch) {}
-
-// protected:
-//   virtual void operator () ()
-//   {
-//     latch->await();
-//     receive();
-//     EXPECT_EQ(TERMINATE, name());
-//   }
-
-// private:
-//   Latch* latch;
-// };
-
-
-// TEST(Process, terminate)
-// {
-//   ASSERT_TRUE(GTEST_IS_THREADSAFE);
-
-//   Latch latch;
-
-//   TerminateProcess process(&latch);
-
-//   spawn(&process);
-
-//   post(process.self(), "one");
-//   post(process.self(), "two");
-//   post(process.self(), "three");
-
-//   terminate(process.self());
-
-//   latch.trigger();
-  
-//   wait(process.self());
-// }
-
-
 class TimeoutProcess : public Process<TimeoutProcess>
 {
 public:
@@ -571,11 +631,9 @@ TEST(Process, delay)
 
   spawn(process);
 
-  double seconds = 5.0;
+  delay(Seconds(5.0), process.self(), &TimeoutProcess::timeout);
 
-  delay(seconds, process.self(), &TimeoutProcess::timeout);
-
-  Clock::advance(seconds);
+  Clock::advance(5.0);
 
   while (!timeoutCalled);
 
@@ -768,7 +826,7 @@ public:
   virtual void initialize()
   {
     usleep(10000);
-    delay(0.0, self(), &SettleProcess::afterDelay);
+    delay(Seconds(0), self(), &SettleProcess::afterDelay);
   }
 
   void afterDelay()
@@ -809,37 +867,6 @@ TEST(Process, settle)
 }
 
 
-// #define ENUMERATE1(item) item##1
-// #define ENUMERATE2(item) ENUMERATE1(item), item##2
-// #define ENUMERATE3(item) ENUMERATE2(item), item##3
-// #define ENUMERATE4(item) ENUMERATE3(item), item##4
-// #define ENUMERATE5(item) ENUMERATE4(item), item##5
-// #define ENUMERATE6(item) ENUMERATE5(item), item##6
-// #define ENUMERATE(item, n) ENUMERATE##n(item)
-
-// #define GenerateVoidDispatch(n)                                         \
-//   template <typename T,                                                 \
-//             ENUM(typename P, n),                                        \
-//             ENUM(typename A, n)>                                        \
-//   void dispatch(const PID<T>& pid,                                      \
-//                 void (T::*method)(ENUM(P, n)),                          \
-//                 ENUM(A, a, n))                                          \
-//   {                                                                     \
-//     std::tr1::function<void(T*)> thunk =                                \
-//       std::tr1::bind(method, std::tr1::placeholders::_1, ENUM(a, 5));   \
-//                                                                         \
-//     std::tr1::function<void(ProcessBase*)>* dispatcher =                \
-//       new std::tr1::function<void(ProcessBase*)>(                       \
-//           std::tr1::bind(&internal::vdispatcher<T>,                     \
-//                          std::tr1::placeholders::_1,                    \
-//                          thunk));                                       \
-//                                                                         \
-//     internal::dispatch(pid, dispatcher);                                \
-// }
-
-// }
-
-
 TEST(Process, pid)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
@@ -847,9 +874,6 @@ TEST(Process, pid)
   TimeoutProcess process;
 
   PID<TimeoutProcess> pid = process;
-
-//   foo(process, &TimeoutProcess::timeout);
-  //  dispatch(process, &TimeoutProcess::timeout);
 }
 
 
@@ -894,7 +918,7 @@ TEST(Process, listener)
 
   dispatch(PID<Listener1>(process), &Listener1::event1);
   dispatch(PID<Listener2>(process), &Listener2::event2);
-  
+
   terminate(process, false);
   wait(process);
 }
@@ -925,14 +949,14 @@ TEST(Process, executor)
 
   Executor executor;
 
-  deferred<void(int)> event1 =
+  Deferred<void(int)> event1 =
     executor.defer(std::tr1::bind(&EventReceiver::event1,
                                   &receiver,
                                   std::tr1::placeholders::_1));
 
   event1(42);
 
-  deferred<void(const std::string&)> event2 =
+  Deferred<void(const std::string&)> event2 =
     executor.defer(std::tr1::bind(&EventReceiver::event2,
                                   &receiver,
                                   std::tr1::placeholders::_1));
@@ -999,94 +1023,56 @@ TEST(Process, remote)
 }
 
 
-class HttpProcess : public Process<HttpProcess>
+int foo()
 {
-public:
-  HttpProcess()
-  {
-    route("/handler", &HttpProcess::handler);
-  }
+  return 1;
+}
 
-  MOCK_METHOD1(handler, Future<http::Response>(const http::Request&));
-};
-
-
-TEST(Process, http)
+int foo1(int a)
 {
-  ASSERT_TRUE(GTEST_IS_THREADSAFE);
-
-  HttpProcess process;
-
-  EXPECT_CALL(process, handler(_))
-    .WillOnce(Return(http::OK()));
-
-  spawn(process);
-
-  int s = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
-
-  ASSERT_LE(0, s);
-
-  sockaddr_in addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = PF_INET;
-  addr.sin_port = htons(process.self().port);
-  addr.sin_addr.s_addr = process.self().ip;
-
-  ASSERT_EQ(0, connect(s, (sockaddr*) &addr, sizeof(addr)));
-
-  std::ostringstream out;
-
-  out << "GET /" << process.self().id << "/" << "handler"
-      << " HTTP/1.0\r\n"
-      << "Connection: Keep-Alive\r\n"
-      << "\r\n";
-
-  const std::string& data = out.str();
-
-  ASSERT_EQ(data.size(), write(s, data.data(), data.size()));
-
-  std::string response = "HTTP/1.1 200 OK";
-
-  char temp[response.size()];
-
-  ASSERT_LT(0, read(s, temp, response.size()));
-
-  ASSERT_EQ(response, std::string(temp, response.size()));
-
-  ASSERT_EQ(0, close(s));
-
-  terminate(process);
-  wait(process);
+  return a;
 }
 
 
-TEST(Process, poll)
+int foo2(int a, int b)
 {
-  ASSERT_TRUE(GTEST_IS_THREADSAFE);
-
-  int pipes[2];
-  pipe(pipes);
-
-  Future<short> future = io::poll(pipes[0], io::READ);
-
-  EXPECT_FALSE(future.isReady());
-
-  ASSERT_EQ(3, write(pipes[1], "hi", 3));
-
-  future.await();
-
-  ASSERT_TRUE(future.isReady());
-  EXPECT_EQ(io::READ, future.get());
-
-  close(pipes[0]);
-  close(pipes[1]);
+  return a + b;
 }
 
 
-int main(int argc, char** argv)
+int foo3(int a, int b, int c)
 {
-  // Initialize Google Mock/Test.
-  testing::InitGoogleMock(&argc, argv);
+  return a + b + c;
+}
 
-  return RUN_ALL_TESTS();
+
+int foo4(int a, int b, int c, int d)
+{
+  return a + b + c + d;
+}
+
+
+void bar(int a)
+{
+  return;
+}
+
+
+TEST(Process, async)
+{
+  ASSERT_TRUE(GTEST_IS_THREADSAFE);
+
+  // Non-void functions with different no.of args.
+  EXPECT_EQ(1, async(&foo).get());
+  EXPECT_EQ(10, async(&foo1, 10).get());
+  EXPECT_EQ(30, async(&foo2, 10, 20).get());
+  EXPECT_EQ(60, async(&foo3, 10, 20, 30).get());
+  EXPECT_EQ(100, async(&foo4, 10, 20, 30, 40).get());
+
+  // Non-void function with a complex arg.
+  int i = 42;
+  EXPECT_EQ("42", async(&itoa2, &i).get());
+
+  // Non-void function that returns a future.
+  EXPECT_EQ("42", async(&itoa1, &i).get().get());
 }

@@ -9,6 +9,9 @@
 #include <process/process.hpp>
 
 #include <stout/foreach.hpp>
+#include <stout/gzip.hpp>
+#include <stout/hashmap.hpp>
+#include <stout/numify.hpp>
 
 
 namespace process {
@@ -22,6 +25,7 @@ extern void send_file(struct ev_loop*, ev_io*, int);
 class Encoder
 {
 public:
+  virtual ~Encoder() {}
   virtual Sender sender() = 0;
 };
 
@@ -122,7 +126,7 @@ public:
 
     out << "HTTP/1.1 " << response.status << "\r\n";
 
-    std::map<std::string, std::string> headers = response.headers;
+    hashmap<std::string, std::string> headers = response.headers;
 
     // HTTP 1.1 requires the "Date" header. In the future once we
     // start checking the version (above) then we can conditionally
@@ -137,19 +141,50 @@ public:
 
     headers["Date"] = date;
 
+    // Swap the body with a gzip compressed version, if no encoding has
+    // been specified.
+    std::string body = response.body;
+
+    if (response.type == http::Response::BODY &&
+        !headers.contains("Content-Encoding")) {
+      Try<std::string> compressed = gzip::compress(body);
+      if (compressed.isError()) {
+        LOG(WARNING) << "Failed to gzip response body: " << compressed.error();
+      } else {
+        body = compressed.get();
+        headers["Content-Length"] = stringify(body.length());
+        headers["Content-Encoding"] = "gzip";
+      }
+    }
+
     foreachpair (const std::string& key, const std::string& value, headers) {
       out << key << ": " << value << "\r\n";
     }
 
-    // Make sure at least the "Content-Length" header is present in
-    // order to signal to a client the end of a response.
-    if (headers.count("Content-Length") == 0) {
-      out << "Content-Length: " << response.body.size() << "\r\n";
+    // Add a Content-Length header if the response is of type "none"
+    // or "body" and no Content-Length header has been supplied.
+    if (response.type == http::Response::NONE &&
+        !headers.contains("Content-Length")) {
+      out << "Content-Length: 0\r\n";
+    } else if (response.type == http::Response::BODY &&
+               !headers.contains("Content-Length")) {
+      out << "Content-Length: " << body.size() << "\r\n";
     }
 
+    // Use a CRLF to mark end of headers.
     out << "\r\n";
 
-    out.write(response.body.data(), response.body.size());
+    // Add the body if necessary.
+    if (response.type == http::Response::BODY) {
+      // If the Content-Length header was supplied, only write as much data
+      // as the length specifies.
+      Result<uint32_t> length = numify<uint32_t>(headers.get("Content-Length"));
+      if (length.isSome() && length.get() <= body.length()) {
+        out.write(body.data(), length.get());
+      } else {
+        out.write(body.data(), body.size());
+      }
+    }
 
     return out.str();
   }

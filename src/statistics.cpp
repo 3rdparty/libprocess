@@ -2,65 +2,127 @@
 
 #include <glog/logging.h>
 
+#include <algorithm>
+#include <list>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <process/clock.hpp>
+#include <process/delay.hpp>
 #include <process/dispatch.hpp>
 #include <process/future.hpp>
 #include <process/http.hpp>
 #include <process/process.hpp>
 #include <process/statistics.hpp>
 
+#include <stout/error.hpp>
+#include <stout/duration.hpp>
 #include <stout/foreach.hpp>
 #include <stout/hashmap.hpp>
+#include <stout/hashset.hpp>
 #include <stout/json.hpp>
+#include <stout/none.hpp>
 #include <stout/numify.hpp>
 #include <stout/option.hpp>
 #include <stout/stringify.hpp>
 #include <stout/strings.hpp>
-#include <stout/time.hpp>
 
 using namespace process;
 using namespace process::http;
 
+using std::list;
 using std::map;
 using std::string;
 using std::vector;
 
 namespace process {
 
+// This is initialized by process::initialize().
+Statistics* statistics = NULL;
+
+// TODO(bmahler): Move time series related logic into this struct.
+// TODO(bmahler): Investigate using google's btree implementation.
+// This provides better insertion and lookup performance for large
+// containers. This _should_ also provide significant memory
+// savings, especially since:
+//   1. Our insertion order will mostly be in sorted order.
+//   2. Our keys (Seconds) have efficient comparison operators.
+// See: http://code.google.com/p/cpp-btree/
+//      http://code.google.com/p/cpp-btree/wiki/UsageInstructions
+struct TimeSeries
+{
+  TimeSeries() : values(), archived(false) {}
+
+  // We use a map instead of a hashmap to store the values because
+  // that way we can retrieve a series in sorted order efficiently.
+  map<Seconds, double> values;
+  bool archived;
+};
+
+
 class StatisticsProcess : public Process<StatisticsProcess>
 {
 public:
-  StatisticsProcess(const seconds& _window)
+  StatisticsProcess(const Duration& _window)
     : ProcessBase("statistics"),
-      window(_window)
-  {}
+      window(_window) {}
 
   virtual ~StatisticsProcess() {}
 
   // Statistics implementation.
-  map<seconds, double> get(
+  map<Seconds, double> timeseries(
+      const string& context,
       const string& name,
-      const Option<seconds>& start,
-      const Option<seconds>& stop);
-  void set(const string& name, double value);
-  void increment(const string& name);
-  void decrement(const string& name);
+      const Option<Seconds>& start,
+      const Option<Seconds>& stop);
+
+  Option<double> get(const string& context, const string& name);
+
+  map<string, double> get(const string& context);
+
+  Try<Nothing> meter(
+      const string& context,
+      const string& name,
+      const Owned<meters::Meter>& meter);
+
+  void set(
+      const string& context,
+      const string& name,
+      double value,
+      const Seconds& time);
+
+  void archive(const string& context, const string& name);
+
+  void increment(const string& context, const string& name);
+
+  void decrement(const string& context, const string& name);
 
 protected:
   virtual void initialize()
   {
-    route("snapshot.json", &StatisticsProcess::snapshot);
-    route("series.json", &StatisticsProcess::series);
+    route("/snapshot.json", &StatisticsProcess::snapshot);
+    route("/series.json", &StatisticsProcess::series);
+
+    // Schedule the first truncation.
+    delay(STATISTICS_TRUNCATION_INTERVAL, self(), &StatisticsProcess::truncate);
   }
 
 private:
-  // Removes values for the specified statistic that occured outside
+  // Removes values for the specified statistic that occurred outside
   // the time series window.
-  void truncate(const string& name);
+  // NOTE: We always ensure there is at least 1 value left for a statistic,
+  // unless it is archived!
+  // Returns true iff the time series is empty.
+  bool truncate(const string& context, const string& name);
+
+  // Removes values for all statistics that occurred outside the time
+  // series window.
+  // NOTE: Runs periodically every STATISTICS_TRUNCATION_INTERVAL.
+  // NOTE: We always ensure there is at least 1 value left for a statistic,
+  // unless it is archived.
+  void truncate();
 
   // Returns the a snapshot of all statistics in JSON.
   Future<Response> snapshot(const Request& request);
@@ -68,87 +130,210 @@ private:
   // Returns the time series of a statistic in JSON.
   Future<Response> series(const Request& request);
 
-  const seconds window;
+  const Duration window;
 
-  // We use a map instead of a hashmap to store the values because
-  // that way we can retrieve a series in sorted order efficiently.
-  hashmap<string, map<seconds, double> > statistics;
+  // This maps from {context: {name: TimeSeries } }.
+  hashmap<string, hashmap<string, TimeSeries> > statistics;
+
+  // Each statistic can have many meters.
+  // This maps from {context: {name: [meters] } }.
+  hashmap<string, hashmap<string, list<Owned<meters::Meter> > > > meters;
 };
 
 
-map<seconds, double> StatisticsProcess::get(
+Try<Nothing> StatisticsProcess::meter(
+    const string& context,
     const string& name,
-    const Option<seconds>& start,
-    const Option<seconds>& stop)
+    const Owned<meters::Meter>& meter)
 {
-  if (!statistics.contains(name)) {
-    return map<seconds, double>();
+  if (meter->name == name) {
+    return Error("Meter name must not match the statistic name");
   }
 
-  const std::map<seconds, double>& values = statistics.find(name)->second;
+  // Check for a duplicate meter.
+  foreachkey (const string& context, meters) {
+    foreachkey (const string& name, meters[context]) {
+      foreach (Owned<meters::Meter>& existing, meters[context][name]) {
+        if (meter->name == existing->name) {
+          return Error("Meter name matched existing meter name");
+        }
+      }
+    }
+  }
 
-  map<seconds, double>::const_iterator lower =
-    values.lower_bound(start.isSome() ? start.get() : seconds(0.0));
+  // Add the meter.
+  meters[context][name].push_back(meter);
 
-  map<seconds, double>::const_iterator upper =
-    values.upper_bound(stop.isSome() ? stop.get() : seconds(DBL_MAX));
-
-  return map<seconds, double>(lower, upper);
+  return Nothing();
 }
 
 
-void StatisticsProcess::set(const string& name, double value)
+map<Seconds, double> StatisticsProcess::timeseries(
+    const string& context,
+    const string& name,
+    const Option<Seconds>& start,
+    const Option<Seconds>& stop)
 {
-  statistics[name][seconds(Clock::now())] = value;
-  truncate(name);
+  if (!statistics.contains(context) || !statistics[context].contains(name)) {
+    return map<Seconds, double>();
+  }
+
+  const std::map<Seconds, double>& values =
+    statistics[context].find(name)->second.values;
+
+  map<Seconds, double>::const_iterator lower =
+    values.lower_bound(start.isSome() ? start.get() : Seconds(0.0));
+
+  map<Seconds, double>::const_iterator upper =
+    values.upper_bound(stop.isSome() ? stop.get() : Seconds(DBL_MAX));
+
+  return map<Seconds, double>(lower, upper);
 }
 
 
-void StatisticsProcess::increment(const string& name)
+Option<double> StatisticsProcess::get(const string& context, const string& name)
 {
-  if (statistics[name].size() > 0) {
-    double d = statistics[name].rbegin()->second;
-    statistics[name][seconds(Clock::now())] = d + 1.0;
+  if (!statistics.contains(context) ||
+      !statistics[context].contains(name) ||
+      statistics[context][name].values.empty()) {
+    return Option<double>::none();
   } else {
-    statistics[name][seconds(Clock::now())] = 1.0;
+    return statistics[context][name].values.rbegin()->second;
   }
-
-  truncate(name);
 }
 
 
-void StatisticsProcess::decrement(const string& name)
+map<string, double> StatisticsProcess::get(const string& context)
 {
-  if (statistics[name].size() > 0) {
-    double d = statistics[name].rbegin()->second;
-    statistics[name][seconds(Clock::now())] = d - 1.0;
-  } else {
-    statistics[name][seconds(Clock::now())] = -1.0;
+  map<string, double> results;
+
+  if (!statistics.contains(context)) {
+    return results;
   }
 
-  truncate(name);
+  foreachkey (const string& name, statistics[context]) {
+    const map<Seconds, double>& values = statistics[context][name].values;
+
+    if (!values.empty()) {
+      results[name] = values.rbegin()->second;
+    }
+  }
+
+  return results;
 }
 
 
-void StatisticsProcess::truncate(const string& name)
+void StatisticsProcess::set(
+    const string& context,
+    const string& name,
+    double value,
+    const Seconds& time)
 {
-  CHECK(statistics.contains(name));
-  CHECK(statistics[name].size() > 0);
+  statistics[context][name].values[time] = value; // Update the raw value.
+  statistics[context][name].archived = false;     // Unarchive.
 
-  // Always keep at least value for a statistic.
-  if (statistics[name].size() == 1) {
-    return;
+  truncate(context, name);
+
+  // Update the metered values, if necessary.
+  if (meters.contains(context) && meters[context].contains(name)) {
+    foreach (Owned<meters::Meter>& meter, meters[context][name]) {
+      const Option<double>& update = meter->update(time, value);
+      statistics[context][meter->name].archived = false; // Unarchive.
+
+      if (update.isSome()) {
+        statistics[context][meter->name].values[time] = update.get();
+        truncate(context, meter->name);
+      }
+    }
+  }
+}
+
+
+void StatisticsProcess::archive(const string& context, const string& name)
+{
+  // Exclude the statistic from the snapshot.
+  statistics[context][name].archived = true;
+
+  // Remove any meters as well.
+  if (meters.contains(context) && meters[context].contains(name)) {
+    foreach (const Owned<meters::Meter>& meter, meters[context][name]) {
+      statistics[context][meter->name].archived = true;
+    }
+    meters[context].erase(name);
+  }
+}
+
+
+void StatisticsProcess::increment(const string& context, const string& name)
+{
+  double value = 0.0;
+  if (!statistics[context][name].values.empty()) {
+    value = statistics[context][name].values.rbegin()->second;
+  }
+  set(context, name, value + 1.0, Seconds(Clock::now()));
+}
+
+
+void StatisticsProcess::decrement(const string& context, const string& name)
+{
+  double value = 0.0;
+  if (!statistics[context][name].values.empty()) {
+    value = statistics[context][name].values.rbegin()->second;
+  }
+  set(context, name, value - 1.0, Seconds(Clock::now()));
+}
+
+
+bool StatisticsProcess::truncate(const string& context, const string& name)
+{
+  CHECK(statistics.contains(context));
+  CHECK(statistics[context].contains(name));
+
+  if (statistics[context][name].values.empty()) {
+    return true; // No truncation is needed, the time series is already empty.
   }
 
-  map<seconds, double>::iterator start = statistics[name].begin();
+  map<Seconds, double>::iterator start =
+    statistics[context][name].values.begin();
 
-  while ((Clock::now() - start->first.value) > window.value) {
-    statistics[name].erase(start);
-    if (statistics[name].size() == 1) {
+  while ((Clock::now() - start->first.secs()) > window.secs()) {
+    // Always keep at least one value for a statistic, unless it's archived!
+    if (statistics[context][name].values.size() == 1) {
+      if (statistics[context][name].archived) {
+        statistics[context][name].values.clear();
+      }
       break;
     }
-    ++start;
+
+    statistics[context][name].values.erase(start);
+    start = statistics[context][name].values.begin();
   }
+
+  return statistics[context][name].values.empty();
+}
+
+
+void StatisticsProcess::truncate()
+{
+  hashmap<string, hashset<string> > empties;
+
+  foreachkey (const string& context, statistics) {
+    foreachkey (const string& name, statistics[context]) {
+      // Keep track of the emptied timeseries.
+      if (truncate(context, name)) {
+        empties[context].insert(name);
+      }
+    }
+  }
+
+  // Remove the empty timeseries.
+  foreachkey (const string& context, empties) {
+    foreach (const string& name, empties[context]) {
+      statistics[context].erase(name);
+    }
+  }
+
+  delay(STATISTICS_TRUNCATION_INTERVAL, self(), &StatisticsProcess::truncate);
 }
 
 
@@ -156,90 +341,88 @@ Future<Response> StatisticsProcess::snapshot(const Request& request)
 {
   JSON::Array array;
 
-  foreachkey (const string& name, statistics) {
-    CHECK(statistics[name].size() > 0);
-    JSON::Object object;
-    object.values["name"] = name;
-    object.values["time"] = statistics[name].rbegin()->first.value;
-    object.values["value"] = statistics[name].rbegin()->second;
-    array.values.push_back(object);
+  Option<string> queryContext = request.query.get("context");
+  Option<string> queryName = request.query.get("name");
+
+  foreachkey (const string& context, statistics) {
+    foreachkey (const string& name, statistics[context]) {
+      // Exclude archived time series.
+      if (statistics[context][name].archived) {
+        continue;
+      }
+
+      // Skip statistics that don't match the query, if present.
+      if (queryContext.isSome() && queryContext.get() != context) {
+        continue;
+      }
+      if (queryName.isSome() && queryName.get() != name) {
+        continue;
+      }
+
+      CHECK(statistics[context][name].values.size() > 0);
+
+      JSON::Object object;
+      object.values["context"] = context;
+      object.values["name"] = name;
+      object.values["time"] =
+        statistics[context][name].values.rbegin()->first.secs();
+      object.values["value"] =
+        statistics[context][name].values.rbegin()->second;
+      array.values.push_back(object);
+    }
   }
 
-  std::ostringstream out;
-
-  JSON::render(out, array);
-
-  OK response;
-  response.headers["Content-Type"] = "application/json";
-  response.headers["Content-Length"] = stringify(out.str().size());
-  response.body = out.str().data();
-  return response;
+  return OK(array, request.query.get("jsonp"));
 }
 
 
 Future<Response> StatisticsProcess::series(const Request& request)
 {
-  // Get field=value pairs.
-  map<string, vector<string> > pairs =
-    strings::pairs(request.query, ";&", "=");
+  Option<string> context = request.query.get("context");
+  Option<string> name = request.query.get("name");
 
-  Option<string> name = pairs.count("name") > 0 && pairs["name"].size() > 0
-    ? Option<string>::some(pairs["name"].back())
-    : Option<string>::none();
+  if (!context.isSome()) {
+    return BadRequest("Expected 'context=val' in query.\n");
+  } else if (!name.isSome()) {
+    return BadRequest("Expected 'name=val' in query.\n");
+  }
 
-  Option<seconds> start = Option<seconds>::none();
-  Option<seconds> stop = Option<seconds>::none();
+  Option<Seconds> start = None();
+  Option<Seconds> stop = None();
 
-  if (pairs.count("start") > 0 && pairs["start"].size() > 0) {
-    Try<double> result = numify<double>(pairs["start"].back());
+  if (request.query.get("start").isSome()) {
+    Try<double> result = numify<double>(request.query.get("start").get());
     if (result.isError()) {
-      LOG(WARNING) << "Failed to \"numify\" the 'start' value (\""
-                   << pairs["start"].back() << "\"): "
-                   << result.error();
-      return BadRequest();
+      return BadRequest("Failed to parse start: " + result.error());
     }
-    start = Option<seconds>::some(seconds(result.get()));
+    start = Seconds(result.get());
   }
 
-  if (pairs.count("stop") > 0 && pairs["stop"].size() > 0) {
-    Try<double> result = numify<double>(pairs["stop"].back());
+  if (request.query.get("stop").isSome()) {
+    Try<double> result = numify<double>(request.query.get("stop").get());
     if (result.isError()) {
-      LOG(WARNING) << "Failed to \"numify\" the 'stop' value (\""
-                   << pairs["stop"].back() << "\"): "
-                   << result.error();
-      return BadRequest();
+      return BadRequest("Failed to parse stop: " + result.error());
     }
-    stop = Option<seconds>::some(seconds(result.get()));
+    stop = Seconds(result.get());
   }
 
-  if (name.isSome()) {
-    JSON::Array array;
+  JSON::Array array;
 
-    map<seconds, double> values = get(name.get(), start, stop);
+  const map<Seconds, double>& values =
+    timeseries(context.get(), name.get(), start, stop);
 
-    foreachpair (const seconds& s, double value, values) {
-      JSON::Object object;
-      object.values["time"] = s.value;
-      object.values["value"] = value;
-      array.values.push_back(object);
-    }
-
-    std::ostringstream out;
-
-    JSON::render(out, array);
-
-    OK response;
-    response.headers["Content-Type"] = "application/json";
-    response.headers["Content-Length"] = stringify(out.str().size());
-    response.body = out.str().data();
-    return response;
+  foreachpair (const Seconds& s, double value, values) {
+    JSON::Object object;
+    object.values["time"] = s.secs();
+    object.values["value"] = value;
+    array.values.push_back(object);
   }
 
-  return BadRequest();
+  return OK(array, request.query.get("jsonp"));
 }
 
 
-Statistics::Statistics(const seconds& window)
+Statistics::Statistics(const Duration& window)
 {
   process = new StatisticsProcess(window);
   spawn(process);
@@ -253,30 +436,66 @@ Statistics::~Statistics()
 }
 
 
-Future<map<seconds, double> > Statistics::get(
+Future<map<Seconds, double> > Statistics::timeseries(
+    const string& context,
     const string& name,
-    const Option<seconds>& start,
-    const Option<seconds>& stop)
+    const Option<Seconds>& start,
+    const Option<Seconds>& stop)
 {
-  return dispatch(process, &StatisticsProcess::get, name, start, stop);
+  return dispatch(
+      process, &StatisticsProcess::timeseries, context, name, start, stop);
 }
 
 
-void Statistics::set(const string& name, double value)
+Future<Option<double> > Statistics::get(
+    const string& context,
+    const string& name)
 {
-  dispatch(process, &StatisticsProcess::set, name, value);
+  return dispatch(process, &StatisticsProcess::get, context, name);
 }
 
 
-void Statistics::increment(const string& name)
+Future<map<string, double> > Statistics::get(const string& context)
 {
-  dispatch(process, &StatisticsProcess::increment, name);
+  return dispatch(process, &StatisticsProcess::get, context);
 }
 
 
-void Statistics::decrement(const string& name)
+Future<Try<Nothing> > Statistics::meter(
+    const string& context,
+    const string& name,
+    Owned<meters::Meter> meter)
 {
-  dispatch(process, &StatisticsProcess::decrement, name);
+
+  return dispatch(process, &StatisticsProcess::meter, context, name, meter);
+}
+
+
+void Statistics::set(
+    const string& context,
+    const string& name,
+    double value,
+    const Seconds& time)
+{
+  dispatch(process, &StatisticsProcess::set, context, name, value, time);
+}
+
+
+void Statistics::archive(const string& context, const string& name)
+{
+  dispatch(process, &StatisticsProcess::archive, context, name);
+}
+
+
+void Statistics::increment(const string& context, const string& name)
+{
+  dispatch(process, &StatisticsProcess::increment, context, name);
+}
+
+
+void Statistics::decrement(const string& context, const string& name)
+{
+  dispatch(process, &StatisticsProcess::decrement, context, name);
 }
 
 } // namespace process {

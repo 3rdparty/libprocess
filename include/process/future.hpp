@@ -4,17 +4,27 @@
 #include <assert.h>
 #include <stdlib.h> // For abort.
 
+#include <iostream>
+#include <list>
 #include <queue>
 #include <set>
+
+#include <glog/logging.h>
 
 #include <tr1/functional>
 #include <tr1/memory> // TODO(benh): Replace shared_ptr with unique_ptr.
 
 #include <process/latch.hpp>
+#include <process/pid.hpp>
 
+#include <stout/duration.hpp>
 #include <stout/option.hpp>
+#include <stout/preprocessor.hpp>
 
 namespace process {
+
+// Forward declaration (instead of include to break circular dependency).
+template <typename _F> struct _Defer;
 
 namespace internal {
 
@@ -69,7 +79,7 @@ public:
   bool discard();
 
   // Waits for this future to become ready, discarded, or failed.
-  bool await(double secs = 0) const;
+  bool await(const Duration& duration = Seconds(-1.0)) const;
 
   // Return the value associated with this future, waits indefinitely
   // until a value gets associated or until the future is discarded.
@@ -83,7 +93,7 @@ public:
   typedef std::tr1::function<void(const T&)> ReadyCallback;
   typedef std::tr1::function<void(const std::string&)> FailedCallback;
   typedef std::tr1::function<void(void)> DiscardedCallback;
-  typedef std::tr1::function<void(void)> AnyCallback;
+  typedef std::tr1::function<void(const Future<T>&)> AnyCallback;
 
   // Installs callbacks for the specified events and returns a const
   // reference to 'this' in order to easily support chaining.
@@ -96,21 +106,106 @@ public:
   // and associates the result of the callback with the future that is
   // returned to the caller (which may be of a different type).
   template <typename X>
-  Future<X> then(
-      const std::tr1::_Bind<
-      Future<X>(*(std::tr1::_Placeholder<1>))(const T&)>& b) const;
-
-  template <typename X>
-  Future<X> then(
-      const std::tr1::_Bind<
-      X(*(std::tr1::_Placeholder<1>))(const T&)>& b) const;
-
-  template <typename X>
   Future<X> then(const std::tr1::function<Future<X>(const T&)>& f) const;
 
   template <typename X>
   Future<X> then(const std::tr1::function<X(const T&)>& f) const;
 
+  // Helpers for the compiler to be able to forward std::tr1::bind results.
+  template <typename X>
+  Future<X> then(const std::tr1::_Bind<X(*(void))(void)>& b) const
+  {
+    return then(std::tr1::function<X(const T&)>(b));
+  }
+
+#define TEMPLATE(Z, N, DATA)                                            \
+  template <typename X,                                                 \
+            ENUM_PARAMS(N, typename P),                                 \
+            ENUM_PARAMS(N, typename A)>                                 \
+  Future<X> then(                                                       \
+      const std::tr1::_Bind<X(*(ENUM_PARAMS(N, A)))                     \
+      (ENUM_PARAMS(N, P))>& b) const                                    \
+  {                                                                     \
+    return then(std::tr1::function<X(const T&)>(b));                    \
+  }
+
+  REPEAT_FROM_TO(1, 11, TEMPLATE, _) // Args A0 -> A9.
+#undef TEMPLATE
+
+  template <typename X>
+  Future<X> then(const std::tr1::_Bind<Future<X>(*(void))(void)>& b) const
+  {
+    return then(std::tr1::function<Future<X>(const T&)>(b));
+  }
+
+#define TEMPLATE(Z, N, DATA)                                            \
+  template <typename X,                                                 \
+            ENUM_PARAMS(N, typename P),                                 \
+            ENUM_PARAMS(N, typename A)>                                 \
+  Future<X> then(                                                       \
+      const std::tr1::_Bind<Future<X>(*(ENUM_PARAMS(N, A)))             \
+      (ENUM_PARAMS(N, P))>& b) const                                    \
+  {                                                                     \
+    return then(std::tr1::function<Future<X>(const T&)>(b));            \
+  }
+
+  REPEAT_FROM_TO(1, 11, TEMPLATE, _) // Args A0 -> A9.
+#undef TEMPLATE
+
+  // Helpers for the compiler to be able to forward 'defer' results.
+  template <typename X, typename U>
+  Future<X> then(const _Defer<Future<X>(*(PID<U>, X(U::*)(void)))
+                 (const PID<U>&, X(U::*)(void))>& d) const
+  {
+    return then(std::tr1::function<Future<X>(const T&)>(d));
+  }
+
+#define TEMPLATE(Z, N, DATA)                                            \
+  template <typename X,                                                 \
+            typename U,                                                 \
+            ENUM_PARAMS(N, typename P),                                 \
+            ENUM_PARAMS(N, typename A)>                                 \
+  Future<X> then(                                                       \
+      const _Defer<Future<X>(*(PID<U>,                                  \
+                               X(U::*)(ENUM_PARAMS(N, P)),              \
+                               ENUM_PARAMS(N, A)))                      \
+      (const PID<U>&,                                                   \
+       X(U::*)(ENUM_PARAMS(N, P)),                                      \
+       ENUM_PARAMS(N, P))>& d) const                                    \
+  {                                                                     \
+    return then(std::tr1::function<Future<X>(const T&)>(d));            \
+  }
+
+  REPEAT_FROM_TO(1, 11, TEMPLATE, _) // Args A0 -> A9.
+#undef TEMPLATE
+
+  template <typename X, typename U>
+  Future<X> then(const _Defer<Future<X>(*(PID<U>, Future<X>(U::*)(void)))
+                 (const PID<U>&, Future<X>(U::*)(void))>& d) const
+  {
+    return then(std::tr1::function<Future<X>(const T&)>(d));
+  }
+
+#define TEMPLATE(Z, N, DATA)                                            \
+  template <typename X,                                                 \
+            typename U,                                                 \
+            ENUM_PARAMS(N, typename P),                                 \
+            ENUM_PARAMS(N, typename A)>                                 \
+  Future<X> then(                                                       \
+      const _Defer<Future<X>(*(PID<U>,                                  \
+                               Future<X>(U::*)(ENUM_PARAMS(N, P)),      \
+                               ENUM_PARAMS(N, A)))                      \
+      (const PID<U>&,                                                   \
+       Future<X>(U::*)(ENUM_PARAMS(N, P)),                              \
+       ENUM_PARAMS(N, P))>& d) const                                    \
+  {                                                                     \
+    return then(std::tr1::function<Future<X>(const T&)>(d));            \
+  }
+
+  REPEAT_FROM_TO(1, 11, TEMPLATE, _) // Args A0 -> A9.
+#undef TEMPLATE
+
+  // C++11 implementation (covers all functors).
 #if __cplusplus >= 201103L
   template <typename F>
   auto then(F f) const
@@ -326,7 +421,7 @@ Future<Future<T> > select(const std::set<Future<T> >& futures)
 
   typename std::set<Future<T> >::iterator iterator;
   for (iterator = futures.begin(); iterator != futures.end(); ++iterator) {
-    (*iterator).onAny(std::tr1::bind(select, (*iterator)));
+    (*iterator).onAny(std::tr1::bind(select, std::tr1::placeholders::_1));
   }
 
   return future;
@@ -336,7 +431,18 @@ Future<Future<T> > select(const std::set<Future<T> >& futures)
 template <typename T>
 void discard(const std::set<Future<T> >& futures)
 {
-  typename std::set<Future<T> >::iterator iterator;
+  typename std::set<Future<T> >::const_iterator iterator;
+  for (iterator = futures.begin(); iterator != futures.end(); ++iterator) {
+    Future<T> future = *iterator; // Need a non-const copy to discard.
+    future.discard();
+  }
+}
+
+
+template <typename T>
+void discard(const std::list<Future<T> >& futures)
+{
+  typename std::list<Future<T> >::const_iterator iterator;
   for (iterator = futures.begin(); iterator != futures.end(); ++iterator) {
     Future<T> future = *iterator; // Need a non-const copy to discard.
     future.discard();
@@ -456,7 +562,7 @@ bool Future<T>::discard()
 
     while (!onAnyCallbacks->empty()) {
       // TODO(*): Invoke callbacks in another execution context.
-      onAnyCallbacks->front()();
+      onAnyCallbacks->front()(*this);
       onAnyCallbacks->pop();
     }
   }
@@ -498,11 +604,11 @@ bool Future<T>::isFailed() const
 
 
 template <typename T>
-bool Future<T>::await(double secs) const
+bool Future<T>::await(const Duration& duration) const
 {
   if (!isReady() && !isDiscarded() && !isFailed()) {
     assert(latch != NULL);
-    return latch->await(secs);
+    return latch->await(duration);
   }
   return true;
 }
@@ -515,7 +621,15 @@ T Future<T>::get() const
     await();
   }
 
+  CHECK(!isPending()) << "Future was in PENDING after await()";
+
   if (!isReady()) {
+    if (isFailed()) {
+      std::cerr << "Future::get() but state == FAILED: "
+                << failure()  << std::endl;
+    } else if (isDiscarded()) {
+      std::cerr << "Future::get() but state == DISCARDED" << std::endl;
+    }
     abort();
   }
 
@@ -635,7 +749,7 @@ const Future<T>& Future<T>::onAny(const AnyCallback& callback) const
 
   // TODO(*): Invoke callback in another execution context.
   if (run) {
-    callback();
+    callback(*this);
   }
 
   return *this;
@@ -646,32 +760,32 @@ namespace internal {
 
 template <typename T, typename X>
 void thenf(const std::tr1::shared_ptr<Promise<X> >& promise,
-          const std::tr1::function<Future<X>(const T&)>& callback,
-          const Future<T>& future)
+           const std::tr1::function<Future<X>(const T&)>& f,
+           const Future<T>& future)
 {
   if (future.isReady()) {
-    promise->associate(callback(future.get()));
+    promise->associate(f(future.get()));
   } else if (future.isFailed()) {
     promise->fail(future.failure());
   } else if (future.isDiscarded()) {
     promise->future().discard();
   }
 }
+
 
 template <typename T, typename X>
 void then(const std::tr1::shared_ptr<Promise<X> >& promise,
-          const std::tr1::function<X(const T&)>& callback,
+          const std::tr1::function<X(const T&)>& f,
           const Future<T>& future)
 {
   if (future.isReady()) {
-    promise->set(callback(future.get()));
+    promise->set(f(future.get()));
   } else if (future.isFailed()) {
     promise->fail(future.failure());
   } else if (future.isDiscarded()) {
     promise->future().discard();
   }
 }
-
 
 } // namespace internal {
 
@@ -682,13 +796,23 @@ Future<X> Future<T>::then(const std::tr1::function<Future<X>(const T&)>& f) cons
 {
   std::tr1::shared_ptr<Promise<X> > promise(new Promise<X>());
 
-  std::tr1::function<void(void)> thenf =
+  std::tr1::function<void(const Future<T>&)> thenf =
     std::tr1::bind(&internal::thenf<T, X>,
                    promise,
                    f,
-                   *this);
+                   std::tr1::placeholders::_1);
 
   onAny(thenf);
+
+  // Propagate discarding up the chain (note that we bind with a copy
+  // of this future since 'this' might no longer be valid but other
+  // references might still exist.
+  // TODO(benh): Need to pass 'future' as a weak_ptr so that we can
+  // avoid reference counting cycles!
+  std::tr1::function<void(void)> discard =
+    std::tr1::bind(&Future<T>::discard, *this);
+
+  promise->future().onDiscarded(discard);
 
   return promise->future();
 }
@@ -700,57 +824,23 @@ Future<X> Future<T>::then(const std::tr1::function<X(const T&)>& f) const
 {
   std::tr1::shared_ptr<Promise<X> > promise(new Promise<X>());
 
-  std::tr1::function<void(void)> then =
+  std::tr1::function<void(const Future<T>&)> then =
     std::tr1::bind(&internal::then<T, X>,
                    promise,
                    f,
-                   *this);
+                   std::tr1::placeholders::_1);
 
   onAny(then);
 
-  return promise->future();
-}
+  // Propagate discarding up the chain (note that we bind with a copy
+  // of this future since 'this' might no longer be valid but other
+  // references might still exist.
+  // TODO(benh): Need to pass 'future' as a weak_ptr so that we can
+  // avoid reference counting cycles!
+  std::tr1::function<void(void)> discard =
+    std::tr1::bind(&Future<T>::discard, *this);
 
-
-template <typename T>
-template <typename X>
-Future<X> Future<T>::then(
-    const std::tr1::_Bind<
-    Future<X>(*(std::tr1::_Placeholder<1>))(const T&)>& b) const
-{
-  std::tr1::shared_ptr<Promise<X> > promise(new Promise<X>());
-
-  std::tr1::function<Future<X>(const T&)> callback = b;
-
-  std::tr1::function<void(void)> thenf =
-    std::tr1::bind(&internal::thenf<T, X>,
-                   promise,
-                   callback,
-                   *this);
-
-  onAny(thenf);
-
-  return promise->future();
-}
-
-
-template <typename T>
-template <typename X>
-Future<X> Future<T>::then(
-    const std::tr1::_Bind<
-    X(*(std::tr1::_Placeholder<1>))(const T&)>& b) const
-{
-  std::tr1::shared_ptr<Promise<X> > promise(new Promise<X>());
-
-  std::tr1::function<X(const T&)> callback = b;
-
-  std::tr1::function<void(void)> then =
-    std::tr1::bind(&internal::then<T, X>,
-                   promise,
-                   callback,
-                   *this);
-
-  onAny(then);
+  promise->future().onDiscarded(discard);
 
   return promise->future();
 }
@@ -766,15 +856,23 @@ auto Future<T>::then(F f) const
 
   std::tr1::shared_ptr<Promise<X>> promise(new Promise<X>());
 
-  onAny([=] () {
-      if (this->isReady()) {
-        promise->set(f(this->get()));
-      } else if (this->isFailed()) {
-        promise->fail(this->failure());
-      } else if (this->isDiscarded()) {
-        promise->future().discard();
-      }
-    });
+  onAny([=] (const Future<T>& future) {
+    if (future.isReady()) {
+      promise->set(f(future.get()));
+    } else if (future.isFailed()) {
+      promise->fail(future.failure());
+    } else if (future.isDiscarded()) {
+      promise->future().discard();
+    }
+  });
+
+  // TODO(benh): Need to use weak_ptr here so that we can avoid
+  // reference counting cycles!
+  Future<T> future(*this);
+
+  promise->future().onDiscarded([=] () {
+    future.discard(); // Need a non-const copy to discard.
+  });
 
   return promise->future();
 }
@@ -811,7 +909,7 @@ bool Future<T>::set(const T& _t)
 
     while (!onAnyCallbacks->empty()) {
       // TODO(*): Invoke callbacks in another execution context.
-      onAnyCallbacks->front()();
+      onAnyCallbacks->front()(*this);
       onAnyCallbacks->pop();
     }
   }
@@ -850,7 +948,7 @@ bool Future<T>::fail(const std::string& _message)
 
     while (!onAnyCallbacks->empty()) {
       // TODO(*): Invoke callbacks in another execution context.
-      onAnyCallbacks->front()();
+      onAnyCallbacks->front()(*this);
       onAnyCallbacks->pop();
     }
   }
@@ -890,6 +988,7 @@ void Future<T>::cleanup()
     if (*state == PENDING) {
       *refs = 1;
       discard();
+      __sync_sub_and_fetch(refs, 1);
     }
 
     // Now try and cleanup again (this time we know the future has
@@ -898,7 +997,7 @@ void Future<T>::cleanup()
     // just return without doing anything, but the state will forever
     // be "discarded".
     assert(refs != NULL);
-    if (__sync_sub_and_fetch(refs, 1) == 0) {
+    if (*refs == 0) {
       delete refs;
       refs = NULL;
       assert(lock != NULL);

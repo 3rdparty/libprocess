@@ -6,7 +6,7 @@
 # packages may be special cases; this Makefile is responsible for
 # passing any special make or configure flags that might be required.
 
-SUBDIRS = stout
+SUBDIRS = libstout
 
 BUILT_SOURCES = # Initialized to enable using +=.
 
@@ -16,7 +16,7 @@ CONFIGURE_ARGS = @CONFIGURE_ARGS@ --enable-shared=no --with-pic --srcdir=.
 
 include versions.am
 
-STOUT = stout
+STOUT = libstout
 BOOST = boost-$(BOOST_VERSION)
 GLOG = glog-$(GLOG_VERSION)
 GMOCK = gmock-$(GMOCK_VERSION)

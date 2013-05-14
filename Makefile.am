@@ -108,7 +108,12 @@ tests_CPPFLAGS =			\
   -I$(GMOCK)/include			\
   $(libprocess_la_CPPFLAGS)
 
-tests_LDADD = third_party/libgmock.la libprocess.la
+tests_LDADD =				\
+  third_party/libgmock.la		\
+  libprocess.la				\
+  $(GLOG)/libglog.la			\
+  third_party/libry_http_parser.la	\
+  $(LIBEV)/libev.la
 
 TESTS = tests
 

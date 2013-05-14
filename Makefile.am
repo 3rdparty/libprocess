@@ -108,6 +108,7 @@ tests_CPPFLAGS =			\
   -I$(GMOCK)/include			\
   $(libprocess_la_CPPFLAGS)
 
+# Note, need to add all dependencies when not building statically.
 tests_LDADD =				\
   third_party/libgmock.la		\
   libprocess.la				\
@@ -117,7 +118,28 @@ tests_LDADD =				\
 
 TESTS = tests
 
-# TODO(benh): Fix shared builds (tests need libglog, libev, etc).
+
+# Examples.
+check_PROGRAMS += example
+
+example_SOURCES =			\
+  examples/example.cpp
+
+example_CPPFLAGS =			\
+  -I$(top_srcdir)/src			\
+  -I$(GTEST)/include			\
+  -I$(GMOCK)/include			\
+  $(libprocess_la_CPPFLAGS)
+
+# Note, need to add all dependencies when not building statically.
+example_LDADD =				\
+  third_party/libgmock.la		\
+  libprocess.la				\
+  $(GLOG)/libglog.la			\
+  third_party/libry_http_parser.la	\
+  $(LIBEV)/libev.la
+
+
 
 # Using LT_OUTPUT in configure.ac creates config.lt that doesn't get
 # cleaned up by distclean-libtool. See this bug patch (which doesn't

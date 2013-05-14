@@ -856,7 +856,7 @@ auto Future<T>::then(F f) const
 
   std::tr1::shared_ptr<Promise<X>> promise(new Promise<X>());
 
-  onAny([=] (const Future<T>& future) {
+  onAny([=] (const Future<T>& future) mutable {
     if (future.isReady()) {
       promise->set(f(future.get()));
     } else if (future.isFailed()) {

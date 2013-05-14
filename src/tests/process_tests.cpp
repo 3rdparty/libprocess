@@ -18,11 +18,14 @@
 #include <process/filter.hpp>
 #include <process/future.hpp>
 #include <process/gc.hpp>
+#include <process/gmock.hpp>
+#include <process/gtest.hpp>
 #include <process/process.hpp>
 #include <process/run.hpp>
 #include <process/thread.hpp>
 
 #include <stout/duration.hpp>
+#include <stout/nothing.hpp>
 #include <stout/os.hpp>
 #include <stout/stringify.hpp>
 
@@ -494,6 +497,70 @@ TEST(Process, handlers)
 }
 
 
+// Tests EXPECT_MESSAGE and EXPECT_DISPATCH and in particular that an
+// event can get dropped before being processed.
+TEST(Process, expect)
+{
+  ASSERT_TRUE(GTEST_IS_THREADSAFE);
+
+  HandlersProcess process;
+
+  EXPECT_CALL(process, func(_, _))
+    .Times(0);
+
+  PID<HandlersProcess> pid = spawn(&process);
+
+  ASSERT_FALSE(!pid);
+
+  Future<Message> message = DROP_MESSAGE("func", _, _);
+
+  post(pid, "func");
+
+  AWAIT_EXPECT_READY(message);
+
+  Future<Nothing> func = DROP_DISPATCH(pid, &HandlersProcess::func);
+
+  dispatch(pid, &HandlersProcess::func, pid, "");
+
+  AWAIT_EXPECT_READY(func);
+
+  terminate(pid, false);
+  wait(pid);
+}
+
+
+// Tests the FutureArg<N> action.
+TEST(Process, action)
+{
+  ASSERT_TRUE(GTEST_IS_THREADSAFE);
+
+  HandlersProcess process;
+
+  PID<HandlersProcess> pid = spawn(&process);
+
+  ASSERT_FALSE(!pid);
+
+  Future<std::string> future1;
+  Future<Nothing> future2;
+  EXPECT_CALL(process, func(_, _))
+    .WillOnce(FutureArg<1>(&future1))
+    .WillOnce(FutureSatisfy(&future2));
+
+  dispatch(pid, &HandlersProcess::func, pid, "hello world");
+
+  AWAIT_EXPECT_EQ("hello world", future1);
+
+  EXPECT_TRUE(future2.isPending());
+
+  dispatch(pid, &HandlersProcess::func, pid, "hello world");
+
+  AWAIT_EXPECT_READY(future2);
+
+  terminate(pid, false);
+  wait(pid);
+}
+
+
 class BaseProcess : public Process<BaseProcess>
 {
 public:
@@ -631,9 +698,9 @@ TEST(Process, delay)
 
   spawn(process);
 
-  delay(Seconds(5.0), process.self(), &TimeoutProcess::timeout);
+  delay(Seconds(5), process.self(), &TimeoutProcess::timeout);
 
-  Clock::advance(5.0);
+  Clock::advance(Seconds(5));
 
   while (!timeoutCalled);
 
@@ -674,7 +741,7 @@ TEST(Process, order)
 
   double seconds = 1.0;
 
-  Clock::advance(1.0);
+  Clock::advance(Seconds(1));
 
   EXPECT_EQ(now, Clock::now(&process1));
 
@@ -825,14 +892,14 @@ public:
 
   virtual void initialize()
   {
-    usleep(10000);
+    os::sleep(Milliseconds(10));
     delay(Seconds(0), self(), &SettleProcess::afterDelay);
   }
 
   void afterDelay()
   {
     dispatch(self(), &SettleProcess::afterDispatch);
-    usleep(10000);
+    os::sleep(Milliseconds(10));
     TimeoutProcess timeoutProcess;
     spawn(timeoutProcess);
     terminate(timeoutProcess);
@@ -841,7 +908,7 @@ public:
 
   void afterDispatch()
   {
-    usleep(10000);
+    os::sleep(Milliseconds(10));
     calledDispatch = true;
   }
 
@@ -853,17 +920,14 @@ TEST(Process, settle)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
-  // Try 100 times to hit a race.
-  for (int i = 0; i < 100; ++i) {
-    Clock::pause();
-    SettleProcess process;
-    spawn(process);
-    Clock::settle();
-    ASSERT_TRUE(process.calledDispatch);
-    terminate(process);
-    wait(process);
-    Clock::resume();
-  }
+  Clock::pause();
+  SettleProcess process;
+  spawn(process);
+  Clock::settle();
+  ASSERT_TRUE(process.calledDispatch);
+  terminate(process);
+  wait(process);
+  Clock::resume();
 }
 
 

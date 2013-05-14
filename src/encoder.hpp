@@ -3,6 +3,7 @@
 
 #include <ev.h>
 
+#include <map>
 #include <sstream>
 
 #include <process/http.hpp>
@@ -16,6 +17,8 @@
 
 namespace process {
 
+const uint32_t GZIP_MINIMUM_BODY_LENGTH = 1024;
+
 typedef void (*Sender)(struct ev_loop*, ev_io*, int);
 
 extern void send_data(struct ev_loop*, ev_io*, int);
@@ -25,16 +28,26 @@ extern void send_file(struct ev_loop*, ev_io*, int);
 class Encoder
 {
 public:
+  Encoder(const Socket& _s) : s(_s) {}
   virtual ~Encoder() {}
+
   virtual Sender sender() = 0;
+
+  Socket socket() const
+  {
+    return s;
+  }
+
+private:
+  const Socket s; // The socket this encoder is associated with.
 };
 
 
 class DataEncoder : public Encoder
 {
 public:
-  DataEncoder(const std::string& _data)
-    : data(_data), index(0) {}
+  DataEncoder(const Socket& s, const std::string& _data)
+    : Encoder(s), data(_data), index(0) {}
 
   virtual ~DataEncoder() {}
 
@@ -72,8 +85,8 @@ private:
 class MessageEncoder : public DataEncoder
 {
 public:
-  MessageEncoder(Message* _message)
-    : DataEncoder(encode(_message)), message(_message) {}
+  MessageEncoder(const Socket& s, Message* _message)
+    : DataEncoder(s, encode(_message)), message(_message) {}
 
   virtual ~MessageEncoder()
   {
@@ -115,10 +128,15 @@ private:
 class HttpResponseEncoder : public DataEncoder
 {
 public:
-  HttpResponseEncoder(const http::Response& response)
-    : DataEncoder(encode(response)) {}
+  HttpResponseEncoder(
+      const Socket& s,
+      const http::Response& response,
+      const http::Request& request)
+    : DataEncoder(s, encode(response, request)) {}
 
-  static std::string encode(const http::Response& response)
+  static std::string encode(
+      const http::Response& response,
+      const http::Request& request)
   {
     std::ostringstream out;
 
@@ -141,12 +159,13 @@ public:
 
     headers["Date"] = date;
 
-    // Swap the body with a gzip compressed version, if no encoding has
-    // been specified.
+    // Should we compress this response?
     std::string body = response.body;
 
     if (response.type == http::Response::BODY &&
-        !headers.contains("Content-Encoding")) {
+        response.body.length() >= GZIP_MINIMUM_BODY_LENGTH &&
+        !headers.contains("Content-Encoding") &&
+        request.accepts("gzip")) {
       Try<std::string> compressed = gzip::compress(body);
       if (compressed.isError()) {
         LOG(WARNING) << "Failed to gzip response body: " << compressed.error();
@@ -194,8 +213,8 @@ public:
 class FileEncoder : public Encoder
 {
 public:
-  FileEncoder(int _fd, size_t _size)
-    : fd(_fd), size(_size), index(0) {}
+  FileEncoder(const Socket& s, int _fd, size_t _size)
+    : Encoder(s), fd(_fd), size(_size), index(0) {}
 
   virtual ~FileEncoder()
   {

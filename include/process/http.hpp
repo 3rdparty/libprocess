@@ -27,6 +27,10 @@ namespace http {
 struct Request
 {
   // TODO(benh): Add major/minor version.
+  // TODO(bmahler): Header names are not case sensitive! Either make these
+  // case-insensitive, or add a variable for each header in HTTP 1.0/1.1 (like
+  // we've done here with keepAlive).
+  // Tracked by: https://issues.apache.org/jira/browse/MESOS-328.
   hashmap<std::string, std::string> headers;
   std::string method;
   std::string path;
@@ -35,6 +39,71 @@ struct Request
   hashmap<std::string, std::string> query;
   std::string body;
   bool keepAlive;
+
+  // Returns whether the encoding is considered acceptable in the request.
+  // TODO(bmahler): Consider this logic being in decoder.hpp, and having the
+  // Request contain a member variable for each popular HTTP 1.0/1.1 header.
+  bool accepts(const std::string& encoding) const
+  {
+    // See RFC 2616, section 14.3 for the details.
+    Option<std::string> accepted = headers.get("Accept-Encoding");
+
+    if (accepted.isNone()) {
+      return false;
+    }
+
+    // Remove spaces and tabs for easier parsing.
+    accepted = strings::remove(accepted.get(), " ");
+    accepted = strings::remove(accepted.get(), "\t");
+    accepted = strings::remove(accepted.get(), "\n");
+
+    // From RFC 2616:
+    // 1. If the content-coding is one of the content-codings listed in
+    //    the Accept-Encoding field, then it is acceptable, unless it is
+    //    accompanied by a qvalue of 0. (As defined in section 3.9, a
+    //    qvalue of 0 means "not acceptable.")
+    // 2. The special "*" symbol in an Accept-Encoding field matches any
+    //    available content-coding not explicitly listed in the header
+    //    field.
+
+    // First we'll look for the encoding specified explicitly, then '*'.
+    std::vector<std::string> candidates;
+    candidates.push_back(encoding);      // Rule 1.
+    candidates.push_back("*");           // Rule 2.
+
+    foreach (std::string& candidate, candidates) {
+      // Is the candidate one of the accepted encodings?
+      foreach (const std::string& _encoding,
+               strings::tokenize(accepted.get(), ",")) {
+        if (strings::startsWith(_encoding, candidate)) {
+          // Is there a 0 q value? Ex: 'gzip;q=0.0'.
+          const std::map<std::string, std::vector<std::string> >& values =
+            strings::pairs(_encoding, ";", "=");
+
+          // Look for { "q": ["0"] }.
+          if (values.count("q") == 0 || values.find("q")->second.size() != 1) {
+            // No q value, or malformed q value.
+            return true;
+          }
+
+          // Is the q value > 0?
+          Try<double> value = numify<double>(values.find("q")->second[0]);
+          return value.isSome() && value.get() > 0;
+        }
+      }
+    }
+
+    // NOTE: 3 and 4 are partially ignored since we can only provide gzip.
+    // 3. If multiple content-codings are acceptable, then the acceptable
+    //    content-coding with the highest non-zero qvalue is preferred.
+    // 4. The "identity" content-coding is always acceptable, unless
+    //    specifically refused because the Accept-Encoding field includes
+    //    "identity;q=0", or because the field includes "*;q=0" and does
+    //    not explicitly include the "identity" content-coding. If the
+    //    Accept-Encoding field-value is empty, then only the "identity"
+    //    encoding is acceptable.
+    return false;
+  }
 };
 
 
@@ -59,7 +128,9 @@ struct Response
   // "pipe" for streaming a response. Distinguish between the cases
   // using 'type' below.
   //
-  // BODY: Uses 'body' as the body of the response.
+  // BODY: Uses 'body' as the body of the response. These may be
+  // encoded using gzip for efficiency, if 'Content-Encoding' is not
+  // already specified.
   //
   // PATH: Attempts to perform a 'sendfile' operation on the file
   // found at 'path'.
@@ -67,7 +138,7 @@ struct Response
   // PIPE: Splices data from 'pipe' using 'Transfer-Encoding=chunked'.
   // Note that the read end of the pipe will be closed by libprocess
   // either after the write end has been closed or if the socket the
-  // data is being spliced to has been closed (i.e., no body is
+  // data is being spliced to has been closed (i.e., nobody is
   // listening any longer). This can cause writes to the pipe to
   // generate a SIGPIPE (which will terminate your program unless you
   // explicitly ignore them or handle them).

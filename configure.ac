@@ -27,13 +27,13 @@ LT_INIT
 LT_LANG([C++])
 LT_OUTPUT
 
-# The default CFLAGS/CXXFLAGS from autoconf when using gcc is usually
-# "-g -O2". These really slow down compiling our tests, so we turn
-# them off and enable them (where desired) directly in the
+# The default CFLAGS/CXXFLAGS from autoconf when using gcc usually
+# includes "-O2". These really slow down compiling our tests, so we
+# turn them off and enable them (where desired) directly in the
 # Makefile. Note that this should not have an impact on users setting
 # CFLAGS/CXXFLAGS directly at configure time, or when running make.
-AS_IF([test "x${ac_cv_env_CFLAGS_set}" = "x"], [CFLAGS=""])
-AS_IF([test "x${ac_cv_env_CXXFLAGS_set}" = "x"], [CXXFLAGS=""])
+AS_IF([test "x${ac_cv_env_CFLAGS_set}" = "x"], [CFLAGS="-g"])
+AS_IF([test "x${ac_cv_env_CXXFLAGS_set}" = "x"], [CXXFLAGS="-g"])
 
 # Save the configure arguments so we can pass them to any third_party
 # libraries that we might run configure on (see
@@ -53,10 +53,15 @@ AC_ARG_ENABLE([install],
                              [install libprocess]),
               [AC_MSG_ERROR([libprocess can not currently be installed])])
 
+AC_ARG_ENABLE([optimize],
+              AS_HELP_STRING([--disable-optimize],
+                             [don't try to compile with optimizations]),
+              [], [enable_optimize=yes])
+
 AC_ARG_ENABLE([perftools],
-              AS_HELP_STRING([--disable-perftools],
-                             [disable google perftools]),
-              [], [gperftools=yes])
+              AS_HELP_STRING([--enable-perftools],
+                             [enable google perftools]),
+              [gperftools=yes])
 
 AC_ARG_WITH([zlib],
             AS_HELP_STRING([--without-zlib],
@@ -64,12 +69,23 @@ AC_ARG_WITH([zlib],
                             will be far less responsive; not recommended]),
             [], [with_zlib=yes])
 
+
 # Checks for gcc toolchain (we rely on some atomic builtins for now).
 AC_PROG_CXX([g++])
 AC_PROG_CC([gcc])
 
 # Check for pthreads (uses m4/acx_pthread.m4).
 ACX_PTHREAD([], [AC_MSG_ERROR([failed to find pthreads])])
+
+
+# Check if we should try and enable optimizations.
+if test "x$enable_optimize" = "xyes"; then
+  # For now, we only turn on optimizations for gcc.
+  if test "x$GCC" = "xyes"; then
+    CXXFLAGS="$CXXFLAGS -g2 -O2"
+  fi
+fi
+
 
 # Check if we should/can build with libz.
 if test "x$with_zlib" = "xyes"; then
@@ -84,5 +100,19 @@ if test "x$with_zlib" = "xyes"; then
 fi
 
 AM_CONDITIONAL([HAS_GPERFTOOLS], [test "x$gperftools" = "xyes"])
+
+# Added for clock_gettime() call in stout/stopwatch.hpp.
+# We also only want to use stout/proc.hpp on linux.
+case "${target_os}" in
+  linux*)
+    LIBS="$LIBS -lrt"
+    OS_NAME=linux
+    ;;
+  *)
+    ;;
+esac
+
+# Used for conditionally including source files.
+AM_CONDITIONAL([OS_LINUX], [test "x$OS_NAME" = "xlinux"])
 
 AC_OUTPUT

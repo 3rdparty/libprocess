@@ -99,11 +99,10 @@ using std::string;
 using std::stringstream;
 using std::vector;
 
-
-template <int i>
-std::ostream& fixedprecision(std::ostream& os)
+std::ostream& doublePrecision(std::ostream& os)
 {
-  return os << std::fixed << std::setprecision(i);
+  return os << std::fixed
+            << std::setprecision(std::numeric_limits<double>::digits10);
 }
 
 
@@ -255,12 +254,12 @@ public:
 
   // Enqueues the response to be sent once all previously enqueued
   // responses have been processed (e.g., waited for and sent).
-  void enqueue(const Response& response, bool persist);
+  void enqueue(const Response& response, const Request& request);
 
   // Enqueues a future to a response that will get waited on (up to
   // some timeout) and then sent once all previously enqueued
   // responses have been processed (e.g., waited for and sent).
-  void handle(Future<Response>* future, bool persist);
+  void handle(Future<Response>* future, const Request& request);
 
 private:
   // Starts "waiting" on the next available future response.
@@ -270,27 +269,29 @@ private:
   void waited(const Future<Response>& future);
 
   // Demuxes and handles a response.
-  bool process(const Future<Response>& future, bool persist);
+  bool process(const Future<Response>& future, const Request& request);
 
   // Handles stream (i.e., pipe) based responses.
-  void stream(const Future<short>& poll, bool persist);
+  void stream(const Future<short>& poll, const Request& request);
 
   Socket socket; // Wrap the socket to keep it from getting closed.
 
   // Describes a queue "item" that wraps the future to the response
-  // and whether or not the socket should be persisted (vs closed).
+  // and the original request.
+  // The original request contains needed information such as what encodings
+  // are acceptable and whether to persist the connection.
   struct Item
   {
-    Item(Future<Response>* _future, bool _persist)
-      : future(_future), persist(_persist) {}
+    Item(const Request& _request, Future<Response>* _future)
+      : request(_request), future(_future) {}
 
     ~Item()
     {
       delete future;
     }
 
+    const Request request; // Make a copy.
     Future<Response>* future;
-    bool persist;
   };
 
   queue<Item*> items;
@@ -309,10 +310,12 @@ public:
 
   void link(ProcessBase* process, const UPID& to);
 
-  PID<HttpProxy> proxy(int s);
+  PID<HttpProxy> proxy(const Socket& socket);
 
-  void send(Encoder* encoder, int s, bool persist);
-  void send(const Response& response, int s, bool persist);
+  void send(Encoder* encoder, bool persist);
+  void send(const Response& response,
+            const Request& request,
+            const Socket& socket);
   void send(Message* message);
 
   Encoder* next(int s);
@@ -532,7 +535,7 @@ void Clock::pause()
     if (!clock::paused) {
       clock::initial = clock::current = now();
       clock::paused = true;
-      VLOG(2) << "Clock paused at " << fixedprecision<9> << clock::initial;
+      VLOG(2) << "Clock paused at " << doublePrecision << clock::initial;
     }
   }
 
@@ -554,8 +557,7 @@ void Clock::resume()
 
   synchronized (timeouts) {
     if (clock::paused) {
-      VLOG(2) << "Clock resumed at "
-              << std::fixed << std::setprecision(9) << clock::current;
+      VLOG(2) << "Clock resumed at " << doublePrecision << clock::current;
       clock::paused = false;
       clock::currents->clear();
       update_timer = true;
@@ -565,14 +567,13 @@ void Clock::resume()
 }
 
 
-void Clock::advance(double secs)
+void Clock::advance(const Duration& duration)
 {
   synchronized (timeouts) {
     if (clock::paused) {
-      clock::current += secs;
-      VLOG(2) << "Clock advanced ("
-              << std::fixed << std::setprecision(9) << secs
-              << " seconds) to " << clock::current;
+      clock::current += duration.secs();
+      VLOG(2) << "Clock advanced ("  << duration << ") to "
+              << doublePrecision << clock::current;
       if (!update_timer) {
         update_timer = true;
         ev_async_send(loop, &async_watcher);
@@ -582,29 +583,27 @@ void Clock::advance(double secs)
 }
 
 
-void Clock::advance(ProcessBase* process, double secs)
+void Clock::advance(ProcessBase* process, const Duration& duration)
 {
   synchronized (timeouts) {
     if (clock::paused) {
       double current = now(process);
-      current += secs;
+      current += duration.secs();
       (*clock::currents)[process] = current;
-      VLOG(2) << "Clock of " << process->self() << " advanced ("
-              << std::fixed << std::setprecision(9) << secs
-              << " seconds) to " << current;
+      VLOG(2) << "Clock of " << process->self() << " advanced (" << duration
+              << ") to " << doublePrecision << current;
     }
   }
 }
 
 
-void Clock::update(double secs)
+void Clock::update(const Duration& duration)
 {
   synchronized (timeouts) {
     if (clock::paused) {
-      if (clock::current < secs) {
-        clock::current = secs;
-        VLOG(2) << "Clock updated to "
-                << std::fixed << std::setprecision(9) << clock::current;
+      if (clock::current < duration.secs()) {
+        clock::current = duration.secs();
+        VLOG(2) << "Clock updated to " << doublePrecision << clock::current;
         if (!update_timer) {
           update_timer = true;
           ev_async_send(loop, &async_watcher);
@@ -615,15 +614,14 @@ void Clock::update(double secs)
 }
 
 
-void Clock::update(ProcessBase* process, double secs)
+void Clock::update(ProcessBase* process, const Duration& duration)
 {
   synchronized (timeouts) {
     if (clock::paused) {
       double current = now(process);
-      if (current < secs) {
-        VLOG(2) << "Clock of " << process->self() << " updated to "
-                << std::fixed << std::setprecision(9) << secs;
-        (*clock::currents)[process] = secs;
+      if (current < duration.secs()) {
+        VLOG(2) << "Clock of " << process->self() << " updated to " << duration;
+        (*clock::currents)[process] = duration.secs();
       }
     }
   }
@@ -632,7 +630,7 @@ void Clock::update(ProcessBase* process, double secs)
 
 void Clock::order(ProcessBase* from, ProcessBase* to)
 {
-  update(to, now(from));
+  update(to, Seconds(now(from)));
 }
 
 
@@ -760,8 +758,7 @@ void handle_timeouts(struct ev_loop* loop, ev_timer* _, int revents)
   synchronized (timeouts) {
     double now = Clock::now();
 
-    VLOG(3) << "Handling timeouts up to "
-            << std::fixed << std::setprecision(9) << now;
+    VLOG(3) << "Handling timeouts up to " << doublePrecision << now;
 
     double timeout;
     foreachkey (timeout, *timeouts) {
@@ -769,8 +766,7 @@ void handle_timeouts(struct ev_loop* loop, ev_timer* _, int revents)
         break;
       }
 
-      VLOG(3) << "Have timeout(s) at "
-              << std::fixed << std::setprecision(9) << timeout;
+      VLOG(3) << "Have timeout(s) at " << doublePrecision << timeout;
 
       // Record that we have pending timers to execute so the
       // Clock::settle() operation can wait until we're done.
@@ -825,7 +821,7 @@ void handle_timeouts(struct ev_loop* loop, ev_timer* _, int revents)
   if (Clock::paused()) {
     foreach (const Timer& timer, timedout) {
       if (ProcessReference process = process_manager->use(timer.creator())) {
-        Clock::update(process, timer.timeout().value());
+        Clock::update(process, Seconds(timer.timeout().value()));
       }
     }
   }
@@ -1465,15 +1461,15 @@ HttpProxy::~HttpProxy()
 }
 
 
-void HttpProxy::enqueue(const Response& response, bool persist)
+void HttpProxy::enqueue(const Response& response, const Request& request)
 {
-  handle(new Future<Response>(response), persist);
+  handle(new Future<Response>(response), request);
 }
 
 
-void HttpProxy::handle(Future<Response>* future, bool persist)
+void HttpProxy::handle(Future<Response>* future, const Request& request)
 {
-  items.push(new Item(future, persist));
+  items.push(new Item(request, future));
 
   if (items.size() == 1) {
     next();
@@ -1500,7 +1496,7 @@ void HttpProxy::waited(const Future<Response>& future)
 
   // Process the item and determine if we're done or not (so we know
   // whether to start waiting on the next responses).
-  bool processed = process(*item->future, item->persist);
+  bool processed = process(*item->future, item->request);
 
   items.pop();
   delete item;
@@ -1511,24 +1507,16 @@ void HttpProxy::waited(const Future<Response>& future)
 }
 
 
-bool HttpProxy::process(const Future<Response>& future, bool persist)
+bool HttpProxy::process(const Future<Response>& future, const Request& request)
 {
   if (!future.isReady()) {
     // TODO(benh): Consider handling other "states" of future
     // (discarded, failed, etc) with different HTTP statuses.
-    socket_manager->send(ServiceUnavailable(), socket, persist);
+    socket_manager->send(ServiceUnavailable(), request, socket);
     return true; // All done, can process next response.
   }
 
   Response response = future.get();
-
-  // Don't persist connection if headers include 'Connection: close'.
-  if (response.headers.count("Connection") > 0) {
-    const string& connection = response.headers.find("Connection")->second;
-    if (connection == "close") {
-      persist = false;
-    }
-  }
 
   // If the response specifies a path, try and perform a sendfile.
   if (response.type == Response::PATH) {
@@ -1541,21 +1529,21 @@ bool HttpProxy::process(const Future<Response>& future, bool persist)
     if (fd < 0) {
       if (errno == ENOENT || errno == ENOTDIR) {
           VLOG(1) << "Returning '404 Not Found' for path '" << path << "'";
-          socket_manager->send(NotFound(), socket, persist);
+          socket_manager->send(NotFound(), request, socket);
       } else {
         const char* error = strerror(errno);
         VLOG(1) << "Failed to send file at '" << path << "': " << error;
-        socket_manager->send(InternalServerError(), socket, persist);
+        socket_manager->send(InternalServerError(), request, socket);
       }
     } else {
       struct stat s; // Need 'struct' because of function named 'stat'.
       if (fstat(fd, &s) != 0) {
         const char* error = strerror(errno);
         VLOG(1) << "Failed to send file at '" << path << "': " << error;
-        socket_manager->send(InternalServerError(), socket, persist);
+        socket_manager->send(InternalServerError(), request, socket);
       } else if (S_ISDIR(s.st_mode)) {
         VLOG(1) << "Returning '404 Not Found' for directory '" << path << "'";
-        socket_manager->send(NotFound(), socket, persist);
+        socket_manager->send(NotFound(), request, socket);
       } else {
         // While the user is expected to properly set a 'Content-Type'
         // header, we fill in (or overwrite) 'Content-Length' header.
@@ -1564,7 +1552,7 @@ bool HttpProxy::process(const Future<Response>& future, bool persist)
         response.headers["Content-Length"] = out.str();
 
         if (s.st_size == 0) {
-          socket_manager->send(response, socket, persist);
+          socket_manager->send(response, request, socket);
           return true; // All done, can process next request.
         }
 
@@ -1572,11 +1560,14 @@ bool HttpProxy::process(const Future<Response>& future, bool persist)
 
         // TODO(benh): Consider a way to have the socket manager turn
         // on TCP_CORK for both sends and then turn it off.
-        socket_manager->send(response, socket, true);
+        socket_manager->send(
+            new HttpResponseEncoder(socket, response, request),
+            true);
 
         // Note the file descriptor gets closed by FileEncoder.
-        Encoder* encoder = new FileEncoder(fd, s.st_size);
-        socket_manager->send(encoder, socket, persist);
+        socket_manager->send(
+            new FileEncoder(socket, fd, s.st_size),
+            request.keepAlive);
       }
     }
   } else if (response.type == Response::PIPE) {
@@ -1589,7 +1580,7 @@ bool HttpProxy::process(const Future<Response>& future, bool persist)
     if (nonblock.isError()) {
       const char* error = strerror(errno);
       VLOG(1) << "Failed make pipe nonblocking: " << error;
-      socket_manager->send(InternalServerError(), socket, persist);
+      socket_manager->send(InternalServerError(), request, socket);
       return true; // All done, can process next response.
     }
 
@@ -1599,29 +1590,31 @@ bool HttpProxy::process(const Future<Response>& future, bool persist)
 
     VLOG(1) << "Starting \"chunked\" streaming";
 
-    socket_manager->send(response, socket, true);
+    socket_manager->send(
+        new HttpResponseEncoder(socket, response, request),
+        true);
 
     pipe = response.pipe;
 
     io::poll(pipe.get(), io::READ).onAny(
-        defer(self(), &Self::stream, lambda::_1, persist));
+        defer(self(), &Self::stream, lambda::_1, request));
 
     return false; // Streaming, don't process next response (yet)!
   } else {
-    socket_manager->send(response, socket, persist);
+    socket_manager->send(response, request, socket);
   }
 
   return true; // All done, can process next response.
 }
 
 
-void HttpProxy::stream(const Future<short>& poll, bool persist)
+void HttpProxy::stream(const Future<short>& poll, const Request& request)
 {
   // TODO(benh): Use 'splice' on Linux.
 
   CHECK(pipe.isSome());
 
-  bool finished = false; // Whether or not we're done streaming.
+  bool finished = false; // Whether we're done streaming.
 
   if (poll.isReady()) {
     // Read and write.
@@ -1636,7 +1629,7 @@ void HttpProxy::stream(const Future<short>& poll, bool persist)
       } else if (length < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
         // Might block, try again later.
         io::poll(pipe.get(), io::READ).onAny(
-            defer(self(), &Self::stream, lambda::_1, persist));
+            defer(self(), &Self::stream, lambda::_1, request));
         break;
       } else {
         std::ostringstream out;
@@ -1655,16 +1648,21 @@ void HttpProxy::stream(const Future<short>& poll, bool persist)
           out.write(data, length);
           out << "\r\n";
         }
-        socket_manager->send(new DataEncoder(out.str()), socket, persist);
+
+        // We always persist the connection when we're not finished
+        // streaming.
+        socket_manager->send(
+            new DataEncoder(socket, out.str()),
+            finished ? request.keepAlive : true);
       }
     }
   } else if (poll.isFailed()) {
     VLOG(1) << "Failed to poll: " << poll.failure();
-    socket_manager->send(InternalServerError(), socket, persist);
+    socket_manager->send(InternalServerError(), request, socket);
     finished = true;
   } else {
     VLOG(1) << "Unexpected discarded future while polling";
-    socket_manager->send(InternalServerError(), socket, persist);
+    socket_manager->send(InternalServerError(), request, socket);
     finished = true;
   }
 
@@ -1728,28 +1726,26 @@ void SocketManager::link(ProcessBase* process, const UPID& to)
         LOG(FATAL) << "Failed to link, cloexec: " << cloexec.error();
       }
 
-      Socket socket = Socket(s);
-
-      sockets[s] = socket;
+      sockets[s] = Socket(s);
       nodes[s] = node;
 
       persists[node] = s;
 
+      // Allocate and initialize the decoder and watcher (we really
+      // only "receive" on this socket so that we can react when it
+      // gets closed and generate appropriate lost events).
+      DataDecoder* decoder = new DataDecoder(sockets[s]);
+
+      ev_io* watcher = new ev_io();
+      watcher->data = decoder;
+
+      // Try and connect to the node using this socket.
       sockaddr_in addr;
       memset(&addr, 0, sizeof(addr));
       addr.sin_family = PF_INET;
       addr.sin_port = htons(to.port);
       addr.sin_addr.s_addr = to.ip;
 
-      // Allocate and initialize the decoder and watcher (we really
-      // only "receive" on this socket so that we can react when it
-      // gets closed and generate appropriate lost events).
-      DataDecoder* decoder = new DataDecoder(socket);
-
-      ev_io* watcher = new ev_io();
-      watcher->data = decoder;
-
-      // Try and connect to the node using this socket.
       if (connect(s, (sockaddr*) &addr, sizeof(addr)) < 0) {
         if (errno != EINPROGRESS) {
           PLOG(FATAL) << "Failed to link, connect";
@@ -1775,7 +1771,7 @@ void SocketManager::link(ProcessBase* process, const UPID& to)
 }
 
 
-PID<HttpProxy> SocketManager::proxy(int s)
+PID<HttpProxy> SocketManager::proxy(const Socket& socket)
 {
   HttpProxy* proxy = NULL;
 
@@ -1783,12 +1779,12 @@ PID<HttpProxy> SocketManager::proxy(int s)
     // This socket might have been asked to get closed (e.g., remote
     // side hang up) while a process is attempting to handle an HTTP
     // request. Thus, if there is no more socket, return an empty PID.
-    if (sockets.count(s) > 0) {
-      if (proxies.count(s) > 0) {
-        return proxies[s]->self();
+    if (sockets.count(socket) > 0) {
+      if (proxies.count(socket) > 0) {
+        return proxies[socket]->self();
       } else {
-        proxy = new HttpProxy(sockets[s]);
-        proxies[s] = proxy;
+        proxy = new HttpProxy(sockets[socket]);
+        proxies[socket] = proxy;
       }
     }
   }
@@ -1807,29 +1803,29 @@ PID<HttpProxy> SocketManager::proxy(int s)
 }
 
 
-void SocketManager::send(Encoder* encoder, int s, bool persist)
+void SocketManager::send(Encoder* encoder, bool persist)
 {
   CHECK(encoder != NULL);
 
   synchronized (this) {
-    if (sockets.count(s) > 0) {
+    if (sockets.count(encoder->socket()) > 0) {
       // Update whether or not this socket should get disposed after
       // there is no more data to send.
       if (!persist) {
-        dispose.insert(s);
+        dispose.insert(encoder->socket());
       }
 
-      if (outgoing.count(s) > 0) {
-        outgoing[s].push(encoder);
+      if (outgoing.count(encoder->socket()) > 0) {
+        outgoing[encoder->socket()].push(encoder);
       } else {
         // Initialize the outgoing queue.
-        outgoing[s];
+        outgoing[encoder->socket()];
 
         // Allocate and initialize the watcher.
         ev_io* watcher = new ev_io();
         watcher->data = encoder;
 
-        ev_io_init(watcher, encoder->sender(), s, EV_WRITE);
+        ev_io_init(watcher, encoder->sender(), encoder->socket(), EV_WRITE);
 
         synchronized (watchers) {
           watchers->push(watcher);
@@ -1845,17 +1841,28 @@ void SocketManager::send(Encoder* encoder, int s, bool persist)
 }
 
 
-void SocketManager::send(const Response& response, int s, bool persist)
+void SocketManager::send(
+    const Response& response,
+    const Request& request,
+    const Socket& socket)
 {
-  send(new HttpResponseEncoder(response), s, persist);
+  bool persist = request.keepAlive;
+
+  // Don't persist the connection if the headers include
+  // 'Connection: close'.
+  if (response.headers.contains("Connection")) {
+    if (response.headers.get("Connection").get() == "close") {
+      persist = false;
+    }
+  }
+
+  send(new HttpResponseEncoder(socket, response, request), persist);
 }
 
 
 void SocketManager::send(Message* message)
 {
   CHECK(message != NULL);
-
-  DataEncoder* encoder = new MessageEncoder(message);
 
   Node node(message->to.ip, message->to.port);
 
@@ -1865,7 +1872,8 @@ void SocketManager::send(Message* message)
     bool temp = temps.count(node) > 0;
     if (persist || temp) {
       int s = persist ? persists[node] : temps[node];
-      send(encoder, s, persist);
+      CHECK(sockets.count(s) > 0);
+      send(new MessageEncoder(sockets[s], message), persist);
     } else {
       // No peristant or temporary socket to the node currently
       // exists, so we create a temporary one.
@@ -1894,16 +1902,16 @@ void SocketManager::send(Message* message)
       // Initialize the outgoing queue.
       outgoing[s];
 
+      // Allocate and initialize the watcher.
+      ev_io* watcher = new ev_io();
+      watcher->data = new MessageEncoder(sockets[s], message);
+
       // Try and connect to the node using this socket.
       sockaddr_in addr;
       memset(&addr, 0, sizeof(addr));
       addr.sin_family = PF_INET;
       addr.sin_port = htons(message->to.port);
       addr.sin_addr.s_addr = message->to.ip;
-
-      // Allocate and initialize the watcher.
-      ev_io* watcher = new ev_io();
-      watcher->data = encoder;
 
       if (connect(s, (sockaddr*) &addr, sizeof(addr)) < 0) {
         if (errno != EINPROGRESS) {
@@ -2117,7 +2125,7 @@ void SocketManager::exited(ProcessBase* process)
           CHECK(linker != process) << "Process linked with itself";
           synchronized (timeouts) {
             if (Clock::paused()) {
-              Clock::update(linker, secs);
+              Clock::update(linker, Seconds(secs));
             }
           }
           linker->enqueue(new ExitedEvent(linkee));
@@ -2195,7 +2203,7 @@ bool ProcessManager::handle(
 
     // Enqueue the response with the HttpProxy so that it respects the
     // order of requests to account for HTTP/1.1 pipelining.
-    dispatch(proxy, &HttpProxy::enqueue, BadRequest(), request->keepAlive);
+    dispatch(proxy, &HttpProxy::enqueue, BadRequest(), *request);
 
     // Cleanup request.
     delete request;
@@ -2212,7 +2220,7 @@ bool ProcessManager::handle(
 
     // Enqueue the response with the HttpProxy so that it respects the
     // order of requests to account for HTTP/1.1 pipelining.
-    dispatch(proxy, &HttpProxy::enqueue, NotFound(), request->keepAlive);
+    dispatch(proxy, &HttpProxy::enqueue, NotFound(), *request);
 
     // Cleanup request.
     delete request;
@@ -2252,7 +2260,7 @@ bool ProcessManager::handle(
 
   // Enqueue the response with the HttpProxy so that it respects the
   // order of requests to account for HTTP/1.1 pipelining.
-  dispatch(proxy, &HttpProxy::enqueue, NotFound(), request->keepAlive);
+  dispatch(proxy, &HttpProxy::enqueue, NotFound(), *request);
 
   // Cleanup request.
   delete request;
@@ -2279,7 +2287,7 @@ bool ProcessManager::deliver(
         if (sender != NULL) {
           Clock::order(sender, receiver);
         } else {
-          Clock::update(receiver, Clock::now());
+          Clock::update(receiver, Seconds(Clock::now()));
         }
       }
     }
@@ -2342,8 +2350,8 @@ void ProcessManager::resume(ProcessBase* process)
 {
   __process__ = process;
 
-  VLOG(2) << "Resuming " << process->pid << " at "
-          << std::fixed << std::setprecision(9) << Clock::now();
+  VLOG(2) << "Resuming " << process->pid << " at " << doublePrecision
+          << Clock::now();
 
   bool terminate = false;
   bool blocked = false;
@@ -2375,6 +2383,46 @@ void ProcessManager::resume(ProcessBase* process)
 
     if (!blocked) {
       CHECK(event != NULL);
+
+      // Determine if we should filter this event.
+      synchronized (filterer) {
+        if (filterer != NULL) {
+          bool filter = false;
+          struct FilterVisitor : EventVisitor
+          {
+            FilterVisitor(bool* _filter) : filter(_filter) {}
+
+            virtual void visit(const MessageEvent& event)
+            {
+              *filter = filterer->filter(event);
+            }
+
+            virtual void visit(const DispatchEvent& event)
+            {
+              *filter = filterer->filter(event);
+            }
+
+            virtual void visit(const HttpEvent& event)
+            {
+              *filter = filterer->filter(event);
+            }
+
+            virtual void visit(const ExitedEvent& event)
+            {
+              *filter = filterer->filter(event);
+            }
+
+            bool* filter;
+          } visitor(&filter);
+
+          event->visit(&visitor);
+
+          if (filter) {
+            delete event;
+            continue; // Try and execute the next event.
+          }
+        }
+      }
 
       // Determine if we should terminate.
       terminate = event->is<TerminateEvent>();
@@ -2412,12 +2460,36 @@ void ProcessManager::cleanup(ProcessBase* process)
 {
   VLOG(2) << "Cleaning up " << process->pid;
 
-  // Processes that were waiting on exiting process.
-  list<ProcessBase*> resumable;
+  // First, set the terminating state so no more events will get
+  // enqueued and delete al the pending events. We want to delete the
+  // events before we hold the processes lock because deleting an
+  // event could cause code outside libprocess to get executed which
+  // might cause a deadlock with the processes lock. Likewise,
+  // deleting the events now rather than later has the nice property
+  // of making sure that any events that might have gotten enqueued on
+  // the process we are cleaning up will get dropped (since it's
+  // terminating) and eliminates the potential of enqueueing them on
+  // another process that gets spawned with the same PID.
+  deque<Event*> events;
+
+  process->lock();
+  {
+    process->state = ProcessBase::TERMINATING;
+    events = process->events;
+    process->events.clear();
+  }
+  process->unlock();
+
+  // Delete pending events.
+  while (!events.empty()) {
+    Event* event = events.front();
+    events.pop_front();
+    delete event;
+  }
 
   // Possible gate non-libprocess threads are waiting at.
   Gate* gate = NULL;
- 
+
   // Remove process.
   synchronized (processes) {
     // Wait for all process references to get cleaned up.
@@ -2428,12 +2500,7 @@ void ProcessManager::cleanup(ProcessBase* process)
 
     process->lock();
     {
-      // Free any pending events.
-      while (!process->events.empty()) {
-        Event* event = process->events.front();
-        process->events.pop_front();
-        delete event;
-      }
+      CHECK(process->events.empty());
 
       processes.erase(process->pid.id);
  
@@ -2446,7 +2513,7 @@ void ProcessManager::cleanup(ProcessBase* process)
       }
 
       CHECK(process->refs == 0);
-      process->state = ProcessBase::FINISHED;
+      process->state = ProcessBase::TERMINATED;
     }
     process->unlock();
 
@@ -2454,9 +2521,9 @@ void ProcessManager::cleanup(ProcessBase* process)
     // cleanup, but rather the clock is reset for a process when it is
     // created (see ProcessBase::ProcessBase). We do this so that
     // SocketManager::exited can access the current time of the
-    // process to "order" exited events. It might make sense to
-    // consider storing the time of the process as a field of the
-    // class instead.
+    // process to "order" exited events. TODO(benh): It might make
+    // sense to consider storing the time of the process as a field of
+    // the class instead.
 
     // Now we tell the socket manager about this process exiting so
     // that it can create exited events for linked processes. We
@@ -2467,9 +2534,10 @@ void ProcessManager::cleanup(ProcessBase* process)
     // removed the process above) thus causing an exited event, which
     // could cause the process to get deleted (e.g., the garbage
     // collector might link _after_ the process has already been
-    // removed, thus getting an exited event but we don't want that
-    // exited event to fire until after we have used the process in
-    // SocketManager::exited.
+    // removed from processes thus getting an exited event but we
+    // don't want that exited event to fire and actually delete the
+    // process until after we have used the process in
+    // SocketManager::exited).
     socket_manager->exited(process);
   }
 
@@ -2516,7 +2584,7 @@ void ProcessManager::terminate(
           if (sender != NULL) {
             Clock::order(sender, process);
           } else {
-            Clock::update(process, Clock::now());
+            Clock::update(process, Seconds(Clock::now()));
           }
         }
       }
@@ -2550,7 +2618,7 @@ bool ProcessManager::wait(const UPID& pid)
   synchronized (processes) {
     if (processes.count(pid.id) > 0) {
       process = processes[pid.id];
-      CHECK(process->state != ProcessBase::FINISHED);
+      CHECK(process->state != ProcessBase::TERMINATED);
 
       // Check and see if a gate already exists.
       if (gates.find(process) == gates.end()) {
@@ -2652,7 +2720,7 @@ void ProcessManager::settle()
 {
   bool done = true;
   do {
-    usleep(10000);
+    os::sleep(Milliseconds(10));
     done = true;
     // Hopefully this is the only place we acquire both these locks.
     synchronized (runq) {
@@ -2694,8 +2762,7 @@ Timer Timer::create(
 
   Timer timer(__sync_fetch_and_add(&id, 1), timeout, pid, thunk);
 
-  VLOG(3) << "Created a timer for "
-          << std::fixed << std::setprecision(9) << timeout.value();
+  VLOG(3) << "Created a timer for " << doublePrecision << timeout.value();
 
   // Add the timer.
   synchronized (timeouts) {
@@ -2744,7 +2811,11 @@ ProcessBase::ProcessBase(const string& id)
 
   state = ProcessBase::BOTTOM;
 
-  pthread_mutex_init(&m, NULL);
+  pthread_mutexattr_t attr;
+  pthread_mutexattr_init(&attr);
+  pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+  pthread_mutex_init(&m, &attr);
+  pthread_mutexattr_destroy(&attr);
 
   refs = 0;
 
@@ -2761,7 +2832,7 @@ ProcessBase::ProcessBase(const string& id)
         if (__process__ != NULL) {
           Clock::order(__process__, this);
         } else {
-          Clock::update(this, Clock::now());
+          Clock::update(this, Seconds(Clock::now()));
         }
       }
     }
@@ -2776,55 +2847,9 @@ void ProcessBase::enqueue(Event* event, bool inject)
 {
   CHECK(event != NULL);
 
-  // TODO(benh): Put filter inside lock statement below so that we can
-  // guarantee the order of the messages seen by a filter are the same
-  // as the order of messages seen by the process. Right now two
-  // different threads might execute the filter code and then enqueue
-  // the messages in non-deterministic orderings (i.e., there are two
-  // "atomic" blocks, the filter code here and the enqueue code
-  // below).
-  synchronized (filterer) {
-    if (filterer != NULL) {
-      bool filter = false;
-      struct FilterVisitor : EventVisitor
-      {
-        FilterVisitor(bool* _filter) : filter(_filter) {}
-
-        virtual void visit(const MessageEvent& event)
-        {
-          *filter = filterer->filter(event);
-        }
-
-        virtual void visit(const DispatchEvent& event)
-        {
-          *filter = filterer->filter(event);
-        }
-
-        virtual void visit(const HttpEvent& event)
-        {
-          *filter = filterer->filter(event);
-        }
-
-        virtual void visit(const ExitedEvent& event)
-        {
-          *filter = filterer->filter(event);
-        }
-
-        bool* filter;
-      } visitor(&filter);
-
-      event->visit(&visitor);
-
-      if (filter) {
-        delete event;
-        return;
-      }
-    }
-  }
-
   lock();
   {
-    if (state != FINISHED) {
+    if (state != TERMINATING && state != TERMINATED) {
       if (!inject) {
         events.push_back(event);
       } else {
@@ -2917,7 +2942,7 @@ void ProcessBase::visit(const HttpEvent& event)
     PID<HttpProxy> proxy = socket_manager->proxy(event.socket);
 
     // Let the HttpProxy know about this request (via the future).
-    dispatch(proxy, &HttpProxy::handle, future, event.request->keepAlive);
+    dispatch(proxy, &HttpProxy::handle, future, *event.request);
 
     // Now call the handler and associate the response with the promise.
     promise->associate(handlers.http[name](*event.request));
@@ -2952,7 +2977,7 @@ void ProcessBase::visit(const HttpEvent& event)
 
     // Enqueue the response with the HttpProxy so that it respects the
     // order of requests to account for HTTP/1.1 pipelining.
-    dispatch(proxy, &HttpProxy::enqueue, response, event.request->keepAlive);
+    dispatch(proxy, &HttpProxy::enqueue, response, *event.request);
   } else {
     VLOG(1) << "Returning '404 Not Found' for '" << event.request->path << "'";
 
@@ -2961,8 +2986,7 @@ void ProcessBase::visit(const HttpEvent& event)
 
     // Enqueue the response with the HttpProxy so that it respects the
     // order of requests to account for HTTP/1.1 pipelining.
-    dispatch(proxy, &HttpProxy::enqueue,
-             NotFound(), event.request->keepAlive);
+    dispatch(proxy, &HttpProxy::enqueue, NotFound(), *event.request);
   }
 }
 
@@ -3004,7 +3028,7 @@ UPID spawn(ProcessBase* process, bool manage)
           if (__process__ != NULL) {
             Clock::order(__process__, process);
           } else {
-            Clock::update(process, Clock::now());
+            Clock::update(process, Seconds(Clock::now()));
           }
         }
       }
@@ -3076,7 +3100,7 @@ bool wait(const UPID& pid, const Duration& duration)
               << pid << " that it is currently executing." << std::endl;
   }
 
-  if (duration == Seconds(-1.0)) {
+  if (duration == Seconds(-1)) {
     return process_manager->wait(pid);
   }
 
@@ -3128,9 +3152,9 @@ void read(int fd,
     return;
   }
 
-  // Since promise->future() will be discarded before future is discarded, we
-  // should never see a discarded future here because of the check in the
-  // beginning of this function.
+  // Since promise->future() will be discarded before future is
+  // discarded, we should never see a discarded future here because of
+  // the check in the beginning of this function.
   CHECK(!future.isDiscarded());
 
   if (future.isFailed()) {
@@ -3193,7 +3217,7 @@ Future<size_t> read(int fd, void* data, size_t size)
   Try<bool> nonblock = os::isNonblock(fd);
   if (nonblock.isError()) {
     // The file descriptor is not valid (e.g. fd has been closed).
-    promise->fail(strerror(errno));
+    promise->fail(string("Failed to check O_NONBLOCK") + strerror(errno));
     return promise->future();
   } else if (!nonblock.get()) {
     // The fd is not opened with O_NONBLOCK set.
@@ -3206,12 +3230,14 @@ Future<size_t> read(int fd, void* data, size_t size)
     return promise->future();
   }
 
-  Future<short> future = poll(fd, process::io::READ).onAny(
-      lambda::bind(&internal::read, fd, data, size, promise, lambda::_1));
-
-  // Also cancel the polling if promise->future() is discarded.
-  promise->future().onDiscarded(
-      lambda::bind(&Future<short>::discard, future));
+  // Because the file descriptor is non-blocking, we call read()
+  // immediately. The read may in turn call poll if needed, avoiding
+  // unnecessary polling. We also observed that for some combination
+  // of libev and Linux kernel versions, the poll would block for
+  // non-deterministically long periods of time. This may be fixed in
+  // a newer version of libev (we use 3.8 at the time of writing this
+  // comment).
+  internal::read(fd, data, size, promise, io::READ);
 
   return promise->future();
 }
@@ -3227,8 +3253,7 @@ Future<string> _read(int fd,
   return io::read(fd, data.get(), length)
     .then([=] (size_t size) {
       if (size == 0) { // EOF.
-        string result(*buffer);
-        return Future<string>(result);
+        return string(*buffer);
       }
       buffer->append(data, size);
       return _read(fd, buffer, data, length);
@@ -3251,11 +3276,11 @@ Future<string> __read(
     size_t length)
 {
   if (size == 0) { // EOF.
-    string result(*buffer);
-    return Future<string>(result);
+    return string(*buffer);
   }
 
   buffer->append(data.get(), size);
+
   return _read(fd, buffer, data, length);
 }
 
@@ -3340,11 +3365,13 @@ Future<Response> get(const UPID& upid, const string& path, const string& query)
   addr.sin_addr.s_addr = upid.ip;
 
   if (connect(s, (sockaddr*) &addr, sizeof(addr)) < 0) {
-    return Future<Response>::failed(strerror(errno));
+    return Future<Response>::failed(
+        string("Failed to connect: ") + strerror(errno));
   }
 
   std::ostringstream out;
 
+  // TODO(bmahler): Add the Host header for HTTP 1.1.
   out << "GET /" << upid.id << "/" << path << "?" << query << " HTTP/1.1\r\n"
       << "Connection: close\r\n"
       << "\r\n";
@@ -3360,7 +3387,8 @@ Future<Response> get(const UPID& upid, const string& path, const string& query)
       if (errno == EINTR) {
         continue;
       }
-      return Future<Response>::failed(strerror(errno));
+      return Future<Response>::failed(
+          string("Failed to write: ") + strerror(errno));
     }
 
     remaining -= n;
@@ -3374,7 +3402,8 @@ Future<Response> get(const UPID& upid, const string& path, const string& query)
 
   // Decode once the async read completes.
   return io::read(s)
-    .then(lambda::bind(&internal::decode, lambda::_1));
+    .then(lambda::bind(&internal::decode, lambda::_1))
+    .onAny(lambda::bind(&os::close, s));
 }
 
 }  // namespace http {
@@ -3383,11 +3412,13 @@ namespace internal {
 
 void dispatch(
     const UPID& pid,
-    const std::tr1::shared_ptr<std::tr1::function<void(ProcessBase*)> >& f)
+    const std::tr1::shared_ptr<std::tr1::function<void(ProcessBase*)> >& f,
+    const string& method)
 {
   process::initialize();
 
-  process_manager->deliver(pid, new DispatchEvent(f), __process__);
+  DispatchEvent* event = new DispatchEvent(pid, f, method);
+  process_manager->deliver(pid, event, __process__);
 }
 
 } // namespace internal {

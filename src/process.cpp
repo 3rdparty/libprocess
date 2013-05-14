@@ -3251,11 +3251,11 @@ Future<string> _read(int fd,
                      size_t length)
 {
   return io::read(fd, data.get(), length)
-    .then([=] (size_t size) {
+    .then([=] (size_t size) -> Future<string> {
       if (size == 0) { // EOF.
         return string(*buffer);
       }
-      buffer->append(data, size);
+      buffer->append(data.get(), size);
       return _read(fd, buffer, data, length);
     });
 }

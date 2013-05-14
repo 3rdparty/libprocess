@@ -87,14 +87,14 @@ public:
   }
 
 protected:
-  static const double NANOSECONDS =  0.000000001;
-  static const double MICROSECONDS = 0.000001;
-  static const double MILLISECONDS = 0.001;
-  static const uint64_t SECONDS    = 1;
-  static const uint64_t MINUTES    = 60 * SECONDS;
-  static const uint64_t HOURS      = 60 * MINUTES;
-  static const uint64_t DAYS       = 24 * HOURS;
-  static const uint64_t WEEKS      = 7 * DAYS;
+  static constexpr double NANOSECONDS =  0.000000001;
+  static constexpr double MICROSECONDS = 0.000001;
+  static constexpr double MILLISECONDS = 0.001;
+  static constexpr uint64_t SECONDS    = 1;
+  static constexpr uint64_t MINUTES    = 60 * SECONDS;
+  static constexpr uint64_t HOURS      = 60 * MINUTES;
+  static constexpr uint64_t DAYS       = 24 * HOURS;
+  static constexpr uint64_t WEEKS      = 7 * DAYS;
 
   Duration(double value, double unit)
     : seconds(value * unit) {}

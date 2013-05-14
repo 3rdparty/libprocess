@@ -806,7 +806,7 @@ Future<X> Future<T>::then(const std::tr1::function<Future<X>(const T&)>& f) cons
 
   // Propagate discarding up the chain (note that we bind with a copy
   // of this future since 'this' might no longer be valid but other
-  // references might still exist.
+  // references might still exist).
   // TODO(benh): Need to pass 'future' as a weak_ptr so that we can
   // avoid reference counting cycles!
   std::tr1::function<void(void)> discard =
@@ -834,7 +834,7 @@ Future<X> Future<T>::then(const std::tr1::function<X(const T&)>& f) const
 
   // Propagate discarding up the chain (note that we bind with a copy
   // of this future since 'this' might no longer be valid but other
-  // references might still exist.
+  // references might still exist).
   // TODO(benh): Need to pass 'future' as a weak_ptr so that we can
   // avoid reference counting cycles!
   std::tr1::function<void(void)> discard =
@@ -866,12 +866,15 @@ auto Future<T>::then(F f) const
     }
   });
 
+  // Propagate discarding up the chain (note that we need a copy of
+  // this future since 'this' might no longer be valid but other
+  // references might still exist).
   // TODO(benh): Need to use weak_ptr here so that we can avoid
   // reference counting cycles!
   Future<T> future(*this);
 
-  promise->future().onDiscarded([=] () {
-    future.discard(); // Need a non-const copy to discard.
+  promise->future().onDiscarded([=] () mutable {
+    future.discard();
   });
 
   return promise->future();

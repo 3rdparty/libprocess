@@ -120,19 +120,130 @@ TESTS = tests
 
 
 # Examples.
-check_PROGRAMS += example
+check_PROGRAMS +=	\
+  example1		\
+  example2		\
+  example3		\
+  example4		\
+  example5		\
+  example6		\
+  example7
 
-example_SOURCES =			\
-  examples/example.cpp
+example1_SOURCES =			\
+  examples/example1.cpp
 
-example_CPPFLAGS =			\
+example1_CPPFLAGS =			\
   -I$(top_srcdir)/src			\
   -I$(GTEST)/include			\
   -I$(GMOCK)/include			\
   $(libprocess_la_CPPFLAGS)
 
 # Note, need to add all dependencies when not building statically.
-example_LDADD =				\
+example1_LDADD =			\
+  third_party/libgmock.la		\
+  libprocess.la				\
+  $(GLOG)/libglog.la			\
+  third_party/libry_http_parser.la	\
+  $(LIBEV)/libev.la
+
+
+example2_SOURCES =			\
+  examples/example2.cpp
+
+example2_CPPFLAGS =			\
+  -I$(top_srcdir)/src			\
+  -I$(GTEST)/include			\
+  -I$(GMOCK)/include			\
+  $(libprocess_la_CPPFLAGS)
+
+# Note, need to add all dependencies when not building statically.
+example2_LDADD =			\
+  third_party/libgmock.la		\
+  libprocess.la				\
+  $(GLOG)/libglog.la			\
+  third_party/libry_http_parser.la	\
+  $(LIBEV)/libev.la
+
+
+example3_SOURCES =			\
+  examples/example3.cpp
+
+example3_CPPFLAGS =			\
+  -I$(top_srcdir)/src			\
+  -I$(GTEST)/include			\
+  -I$(GMOCK)/include			\
+  $(libprocess_la_CPPFLAGS)
+
+# Note, need to add all dependencies when not building statically.
+example3_LDADD =			\
+  third_party/libgmock.la		\
+  libprocess.la				\
+  $(GLOG)/libglog.la			\
+  third_party/libry_http_parser.la	\
+  $(LIBEV)/libev.la
+
+example4_SOURCES =			\
+  examples/example4.cpp
+
+example4_CPPFLAGS =			\
+  -I$(top_srcdir)/src			\
+  -I$(GTEST)/include			\
+  -I$(GMOCK)/include			\
+  $(libprocess_la_CPPFLAGS)
+
+# Note, need to add all dependencies when not building statically.
+example4_LDADD =			\
+  third_party/libgmock.la		\
+  libprocess.la				\
+  $(GLOG)/libglog.la			\
+  third_party/libry_http_parser.la	\
+  $(LIBEV)/libev.la
+
+example5_SOURCES =			\
+  examples/example5.cpp
+
+example5_CPPFLAGS =			\
+  -I$(top_srcdir)/src			\
+  -I$(GTEST)/include			\
+  -I$(GMOCK)/include			\
+  $(libprocess_la_CPPFLAGS)
+
+# Note, need to add all dependencies when not building statically.
+example5_LDADD =			\
+  third_party/libgmock.la		\
+  libprocess.la				\
+  $(GLOG)/libglog.la			\
+  third_party/libry_http_parser.la	\
+  $(LIBEV)/libev.la
+
+example6_SOURCES =			\
+  examples/example6.cpp
+
+example6_CPPFLAGS =			\
+  -I$(top_srcdir)/src			\
+  -I$(GTEST)/include			\
+  -I$(GMOCK)/include			\
+  $(libprocess_la_CPPFLAGS)
+
+# Note, need to add all dependencies when not building statically.
+example6_LDADD =			\
+  third_party/libgmock.la		\
+  libprocess.la				\
+  $(GLOG)/libglog.la			\
+  third_party/libry_http_parser.la	\
+  $(LIBEV)/libev.la
+
+example7_SOURCES =			\
+  examples/example7.cpp
+
+example7_CPPFLAGS =			\
+  -I$(top_srcdir)/src			\
+  -I$(GTEST)/include			\
+  -I$(GMOCK)/include			\
+  $(libprocess_la_CPPFLAGS)
+
+# Note, need to add all dependencies when not building statically.
+example7_LDADD =			\
   third_party/libgmock.la		\
   libprocess.la				\
   $(GLOG)/libglog.la			\

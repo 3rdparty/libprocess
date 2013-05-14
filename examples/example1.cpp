@@ -2,7 +2,6 @@
 
 using namespace process;
 
-using std::string;
 
 class MyProcess : public Process<MyProcess> {};
 

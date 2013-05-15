@@ -28,12 +28,40 @@ private:
 
   template <typename _F> friend struct _Defer;
 
-  friend Deferred<void(void)> defer(const std::tr1::function<void(void)>& f);
+  friend Deferred<void(void)> defer(
+      const UPID& pid,
+      const std::tr1::function<void(void)>& f);
+
+//   template <typename ...A>
+//   friend Deferred<void(A...)> defer(
+//       const UPID& pid,
+//       const std::tr1::function<void(A...)>& f);
+
+//   template <typename R, typename ...A>
+//   friend Deferred<Future<R>(A...)> defer(
+//       const UPID& pid,
+//       const std::tr1::function<R(A...)>& f);
+
+//   template <typename R, typename ...A>
+//   friend Deferred<Future<R>(A...)> defer(
+//       const UPID& pid,
+//       const std::tr1::function<Future<R>(A...)>& f);
 
 #define TEMPLATE(Z, N, DATA)                                            \
-  template <ENUM_PARAMS(N, typename A)>                                 \
-  friend Deferred<void(ENUM_PARAMS(N, A))> defer(                       \
-      const std::tr1::function<void(ENUM_PARAMS(N, A))>& f);
+    template <ENUM_PARAMS(N, typename A)>                               \
+    friend Deferred<void(ENUM_PARAMS(N, A))> defer(                     \
+        const UPID& pid,                                                \
+        const std::tr1::function<void(ENUM_PARAMS(N, A))>& f);          \
+                                                                        \
+    template <typename R, ENUM_PARAMS(N, typename A)>                   \
+    friend Deferred<Future<R>(ENUM_PARAMS(N, A))> defer(                \
+        const UPID& pid,                                                \
+        const std::tr1::function<R(ENUM_PARAMS(N, A))>& f);             \
+                                                                        \
+    template <typename R, ENUM_PARAMS(N, typename A)>                   \
+    friend Deferred<Future<R>(ENUM_PARAMS(N, A))> defer(                \
+        const UPID& pid,                                                \
+        const std::tr1::function<Future<R>(ENUM_PARAMS(N, A))>& f);
 
   REPEAT_FROM_TO(1, 11, TEMPLATE, _) // Args A0 -> A9.
 #undef TEMPLATE

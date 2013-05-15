@@ -316,122 +316,122 @@ defer(const Process<T>* process, R (T::*method)(void))
 #undef TEMPLATE
 
 
-namespace internal {
 
-inline void invoker(
-    ProcessBase* _,
-    const std::tr1::function<void(void)>& f)
-{
-  f();
-}
-
-inline void dispatcher(
+inline Deferred<void(void)> defer(
     const UPID& pid,
     const std::tr1::function<void(void)>& f)
 {
-  std::tr1::shared_ptr<std::tr1::function<void(ProcessBase*)> > invoker(
-      new std::tr1::function<void(ProcessBase*)>(
-          std::tr1::bind(&internal::invoker,
-                         std::tr1::placeholders::_1,
-                         f)));
-
-  internal::dispatch(pid, invoker);
+  return Deferred<void(void)>([pid, f] () {
+    std::tr1::shared_ptr<std::tr1::function<void(ProcessBase*)>> thunk(
+        new std::tr1::function<void(ProcessBase*)>(
+            [f] (ProcessBase* _) { f(); }));
+    internal::dispatch(pid, thunk);
+  });
 }
 
+
+// Due to a bug (http://gcc.gnu.org/bugzilla/show_bug.cgi?id=41933)
+// with variadic templates and lambdas, we still need to do
+// preprocessor expansions.
 #define TEMPLATE(Z, N, DATA)                                            \
-  template <ENUM_PARAMS(N, typename A)>                                 \
-  void CAT(invoker, N)(                                                 \
-      ProcessBase* _,                                                   \
-      const std::tr1::function<void(ENUM_PARAMS(N, A))>& f,             \
-      ENUM_BINARY_PARAMS(N, A, a))                                      \
-  {                                                                     \
-    f(ENUM_PARAMS(N, a));                                               \
-  }                                                                     \
+    template <ENUM_PARAMS(N, typename A)>                               \
+    Deferred<void(ENUM_PARAMS(N, A))> defer(                            \
+        const UPID& pid,                                                \
+        const std::tr1::function<void(ENUM_PARAMS(N, A))>& f)           \
+    {                                                                   \
+      return Deferred<void(ENUM_PARAMS(N, A))>([=] (ENUM_BINARY_PARAMS(N, A, &a)) { \
+        std::tr1::shared_ptr<std::tr1::function<void(ProcessBase*)>> thunk( \
+              new std::tr1::function<void(ProcessBase*)>(               \
+                  [=] (ProcessBase* _) { f(ENUM_PARAMS(N, a)); }));     \
+        internal::dispatch(pid, thunk);                                 \
+      });                                                               \
+    }                                                                   \
                                                                         \
-  template <ENUM_PARAMS(N, typename A)>                                 \
-  void CAT(dispatcher, N)(                                              \
-      const UPID& pid,                                                  \
-      const std::tr1::function<void(ENUM_PARAMS(N, A))>& f,             \
-      ENUM_BINARY_PARAMS(N, A, a))                                      \
-  {                                                                     \
-    std::tr1::shared_ptr<std::tr1::function<void(ProcessBase*)> > invoker( \
-        new std::tr1::function<void(ProcessBase*)>(                     \
-            std::tr1::bind(&internal::CAT(invoker, N)<ENUM_PARAMS(N, A)>, \
-                           std::tr1::placeholders::_1,                  \
-                           f,                                           \
-                           ENUM_PARAMS(N, a))));                        \
+    template <typename R, ENUM_PARAMS(N, typename A)>                   \
+    Deferred<Future<R>(ENUM_PARAMS(N, A))> defer(                       \
+        const UPID& pid,                                                \
+        const std::tr1::function<R(ENUM_PARAMS(N, A))>& f)              \
+    {                                                                   \
+      return Deferred<Future<R>(ENUM_PARAMS(N, A))>([=] (ENUM_BINARY_PARAMS(N, A, &a)) { \
+        std::tr1::shared_ptr<Promise<R>> promise(new Promise<R>());     \
+        std::tr1::shared_ptr<std::tr1::function<void(ProcessBase*)>> thunk( \
+            new std::tr1::function<void(ProcessBase*)>(                 \
+                [=] (ProcessBase* _) { promise->set(f(ENUM_PARAMS(N, a))); })); \
+        internal::dispatch(pid, thunk);                                 \
+        return promise->future();                                       \
+      });                                                               \
+    }                                                                   \
                                                                         \
-    internal::dispatch(pid, invoker);                                   \
-  }
+    template <typename R, ENUM_PARAMS(N, typename A)>                   \
+    Deferred<Future<R>(ENUM_PARAMS(N, A))> defer(                       \
+        const UPID& pid,                                                \
+        const std::tr1::function<Future<R>(ENUM_PARAMS(N, A))>& f)      \
+    {                                                                   \
+      return Deferred<Future<R>(ENUM_PARAMS(N, A))>([=] (ENUM_BINARY_PARAMS(N, A, &a)) { \
+        std::tr1::shared_ptr<Promise<R> > promise(new Promise<R>());    \
+        std::tr1::shared_ptr<std::tr1::function<void(ProcessBase*)>> thunk( \
+            new std::tr1::function<void(ProcessBase*)>(                 \
+                [=] (ProcessBase* _) { promise->associate(              \
+                    f(ENUM_PARAMS(N, a))); }));                         \
+        internal::dispatch(pid, thunk);                                 \
+        return promise->future();                                       \
+      });                                                               \
+    }
 
   REPEAT_FROM_TO(1, 11, TEMPLATE, _) // Args A0 -> A9.
 #undef TEMPLATE
 
 
-  // We can't easily use 'std::tr1::_Placeholder<X>' when doing macro
-  // expansion via ENUM_BINARY_PARAMS because compilers don't like it
-  // when you try and concatenate '<' 'N' '>'. Thus, we typedef them.
-#define TEMPLATE(Z, N, DATA)                            \
-  typedef std::tr1::_Placeholder<INC(N)> _ ## N;
+namespace internal {
+namespace types {
 
-  REPEAT(10, TEMPLATE, _)
-#undef TEMPLATE
+template <typename F, typename ...A>
+std::tr1::function<void(A...)> function(void(F::*)(A...));
 
+template <typename F, typename ...A>
+std::tr1::function<void(A...)> function(void(F::*)(A...)const);
+
+template <typename F, typename R, typename ...A>
+std::tr1::function<R(A...)> function(R(F::*)(A...));
+
+template <typename F, typename R, typename ...A>
+std::tr1::function<R(A...)> function(R(F::*)(A...)const);
+
+template <typename F, typename R, typename ...A>
+std::tr1::function<Future<R>(A...)> function(Future<R>(F::*)(A...));
+
+template <typename F, typename R, typename ...A>
+std::tr1::function<Future<R>(A...)> function(Future<R>(F::*)(A...)const);
+
+template <typename F, typename ...A>
+Deferred<void(A...)> deferred(void(F::*)(A...));
+
+template <typename F, typename ...A>
+Deferred<void(A...)> deferred(void(F::*)(A...)const);
+
+template <typename F, typename R, typename ...A>
+Deferred<Future<R>(A...)> deferred(R(F::*)(A...));
+
+template <typename F, typename R, typename ...A>
+Deferred<Future<R>(A...)> deferred(R(F::*)(A...)const);
+
+template <typename F, typename R, typename ...A>
+Deferred<Future<R>(A...)> deferred(Future<R>(F::*)(A...));
+
+template <typename F, typename R, typename ...A>
+Deferred<Future<R>(A...)> deferred(Future<R>(F::*)(A...)const);
+
+} // namespace types {
 } // namespace internal {
 
 
-// Now we define defer calls for functions and bind statements.
-inline Deferred<void(void)> defer(const std::tr1::function<void(void)>& f)
+template <typename F>
+auto defer(const UPID& pid, F f)
+    -> decltype(internal::types::deferred(&F::operator ()))
 {
-  if (__process__ != NULL) {
-    // In C++11:
-    //   const UPID pid = __process__->self();
-    //   return []() {
-    //     internal::dispatch(pid, [](ProcessBase* _) { f(); });
-    //   }
-    return std::tr1::function<void(void)>(
-          std::tr1::bind(&internal::dispatcher,
-                         __process__->self(),
-                         f));
-  }
-
-  return __executor__->defer(f);
+  typedef decltype(internal::types::function(&F::operator ())) Function;
+  return defer(pid, Function(f));
 }
-
-
-#define TEMPLATE(Z, N, DATA)                                            \
-  template <ENUM_PARAMS(N, typename A)>                                 \
-  Deferred<void(ENUM_PARAMS(N, A))> defer(                              \
-      const std::tr1::function<void(ENUM_PARAMS(N, A))>& f)             \
-  {                                                                     \
-    if (__process__ != NULL) {                                          \
-      return std::tr1::function<void(ENUM_PARAMS(N, A))>(               \
-          std::tr1::bind(&internal::CAT(dispatcher, N)<ENUM_PARAMS(N, A)>, \
-                         __process__->self(),                           \
-                         f,                                             \
-                         ENUM_BINARY_PARAMS(N, internal::_, () INTERCEPT))); \
-    }                                                                   \
-                                                                        \
-    return __executor__->defer(f);                                      \
-  }                                                                     \
-                                                                        \
-  template <typename R, ENUM_PARAMS(N, typename A)>                     \
-  Deferred<Future<R>(ENUM_PARAMS(N, A))> defer(                         \
-      const std::tr1::function<Future<R>(ENUM_PARAMS(N, A))>& f)        \
-  {                                                                     \
-    if (__process__ != NULL) {                                          \
-      return std::tr1::function<Future<R>(ENUM_PARAMS(N, A))>(          \
-          std::tr1::bind(&internal::CAT(dispatcher, N)<ENUM_PARAMS(N, A)>, \
-                         __process__->self(),                           \
-                         f,                                             \
-                         ENUM_BINARY_PARAMS(N, internal::_, () INTERCEPT))); \
-    }                                                                   \
-                                                                        \
-    return __executor__->defer(f);                                      \
-  }
-
-  REPEAT_FROM_TO(1, 11, TEMPLATE, _) // Args A0 -> A9.
-#undef TEMPLATE
 
 } // namespace process {
 

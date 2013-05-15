@@ -35,7 +35,7 @@ protected:
   virtual void initialize()
   {
     dispatch(pid, &StoreProcess::get)
-      .then(defer([this] (int i) mutable -> Nothing {
+      .then(defer(self(), [this] (int i) mutable -> Nothing {
         std::cout << "received " << i << std::endl;
         terminate(self());
         return Nothing();

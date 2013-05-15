@@ -430,38 +430,32 @@ TEST(Process, defer2)
 }
 
 
-template <typename T>
-void set(T* t1, const T& t2)
-{
-  *t1 = t2;
-}
-
-
 TEST(Process, defer3)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
+
+  DeferProcess process;
+
+  PID<DeferProcess> pid = spawn(process);
 
   volatile bool bool1 = false;
   volatile bool bool2 = false;
 
   Deferred<void(bool)> set1 =
-    defer(std::tr1::function<void(bool)>(
-              std::tr1::bind(&set<volatile bool>,
-                             &bool1,
-                             std::tr1::placeholders::_1)));
+    defer(pid, [&bool1] (bool b) { bool1 = b; });
 
   set1(true);
 
   Deferred<void(bool)> set2 =
-    defer(std::tr1::function<void(bool)>(
-              std::tr1::bind(&set<volatile bool>,
-                             &bool2,
-                             std::tr1::placeholders::_1)));
+    defer(pid, [&bool2] (bool b) { bool2 = b; });
 
   set2(true);
 
   while (!bool1);
   while (!bool2);
+
+  terminate(pid);
+  wait(pid);
 }
 
 

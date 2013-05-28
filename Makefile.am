@@ -1,22 +1,22 @@
-# Makefile for libprocess. Note that third_party needs to be built
-# first (see third_party/Makefile.am).
+# Makefile for libprocess. Note that 3rdparty needs to be built
+# first (see 3rdparty/Makefile.am).
 
 ACLOCAL_AMFLAGS = -I m4
 
 AUTOMAKE_OPTIONS = foreign
 
-SUBDIRS = third_party .
+SUBDIRS = 3rdparty .
 
-include third_party/versions.am
+include 3rdparty/versions.am
 
-STOUT = third_party/stout
-BOOST = third_party/boost-$(BOOST_VERSION)
-GLOG = third_party/glog-$(GLOG_VERSION)
-GMOCK = third_party/gmock-$(GMOCK_VERSION)
-GPERFTOOLS = third_party/gperftools-$(GPERFTOOLS_VERSION)
+STOUT = 3rdparty/stout
+BOOST = 3rdparty/boost-$(BOOST_VERSION)
+GLOG = 3rdparty/glog-$(GLOG_VERSION)
+GMOCK = 3rdparty/gmock-$(GMOCK_VERSION)
+GPERFTOOLS = 3rdparty/gperftools-$(GPERFTOOLS_VERSION)
 GTEST = $(GMOCK)/gtest
-RY_HTTP_PARSER = third_party/ry-http-parser-$(RY_HTTP_PARSER_VERSION)
-LIBEV = third_party/libev-$(LIBEV_VERSION)
+RY_HTTP_PARSER = 3rdparty/ry-http-parser-$(RY_HTTP_PARSER_VERSION)
+LIBEV = 3rdparty/libev-$(LIBEV_VERSION)
 
 
 # Library. It is not installable presently because most people link
@@ -48,7 +48,7 @@ libprocess_la_CPPFLAGS =		\
 
 libprocess_la_LIBADD =			\
   $(GLOG)/libglog.la			\
-  third_party/libry_http_parser.la	\
+  3rdparty/libry_http_parser.la	\
   $(LIBEV)/libev.la
 
 if HAS_GPERFTOOLS
@@ -76,6 +76,7 @@ libprocess_la_SOURCES +=					\
   $(top_srcdir)/include/process/id.hpp				\
   $(top_srcdir)/include/process/io.hpp				\
   $(top_srcdir)/include/process/latch.hpp			\
+  $(top_srcdir)/include/process/logging.hpp			\
   $(top_srcdir)/include/process/message.hpp			\
   $(top_srcdir)/include/process/mime.hpp			\
   $(top_srcdir)/include/process/once.hpp			\
@@ -86,7 +87,7 @@ libprocess_la_SOURCES +=					\
   $(top_srcdir)/include/process/run.hpp				\
   $(top_srcdir)/include/process/socket.hpp			\
   $(top_srcdir)/include/process/statistics.hpp			\
-  $(top_srcdir)/include/process/thread.hpp			\
+  $(top_srcdir)/include/process/time.hpp			\
   $(top_srcdir)/include/process/timeout.hpp			\
   $(top_srcdir)/include/process/timer.hpp
 
@@ -100,7 +101,8 @@ tests_SOURCES =							\
   src/tests/io_tests.cpp					\
   src/tests/main.cpp						\
   src/tests/process_tests.cpp					\
-  src/tests/statistics_tests.cpp
+  src/tests/statistics_tests.cpp				\
+  src/tests/time_tests.cpp
 
 tests_CPPFLAGS =			\
   -I$(top_srcdir)/src			\

@@ -1,4 +1,4 @@
-# This Makefile is for building third_party packages from
+# This Makefile is for building third-party packages from
 # tarballs. For autotools-based packages, we configure each of the
 # packages to build static PIC binaries which we can safely link into
 # a shared libmesos, and build it in-place without installing it (even
@@ -33,7 +33,7 @@ EXTRA_DIST =			\
   $(GMOCK).tar.gz		\
   $(GPERFTOOLS).tar.gz		\
   $(LIBEV).tar.gz		\
-  libev-3.8.patch		\
+  $(LIBEV).patch		\
   $(PROTOBUF).tar.gz		\
   $(RY_HTTP_PARSER).tar.gz
 
@@ -119,6 +119,7 @@ stout_tests_SOURCES =				\
   $(STOUT)/tests/bytes_tests.cpp		\
   $(STOUT)/tests/duration_tests.cpp		\
   $(STOUT)/tests/error_tests.cpp		\
+  $(STOUT)/tests/flags_tests.cpp		\
   $(STOUT)/tests/gzip_tests.cpp			\
   $(STOUT)/tests/hashset_tests.cpp		\
   $(STOUT)/tests/json_tests.cpp			\
@@ -127,6 +128,7 @@ stout_tests_SOURCES =				\
   $(STOUT)/tests/none_tests.cpp			\
   $(STOUT)/tests/os_tests.cpp			\
   $(STOUT)/tests/strings_tests.cpp		\
+  $(STOUT)/tests/thread_tests.cpp		\
   $(STOUT)/tests/uuid_tests.cpp
 
 if OS_LINUX

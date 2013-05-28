@@ -22,7 +22,7 @@
 #include <process/gtest.hpp>
 #include <process/process.hpp>
 #include <process/run.hpp>
-#include <process/thread.hpp>
+#include <process/time.hpp>
 
 #include <stout/duration.hpp>
 #include <stout/nothing.hpp>
@@ -40,28 +40,6 @@ using testing::Return;
 using testing::ReturnArg;
 
 // TODO(bmahler): Move tests into their own files as appropriate.
-
-TEST(Process, thread)
-{
-  ThreadLocal<ProcessBase>* _process_ = new ThreadLocal<ProcessBase>();
-
-  ProcessBase* process = new ProcessBase();
-
-  ASSERT_TRUE(*(_process_) == NULL);
-
-  (*_process_) = process;
-
-  ASSERT_TRUE(*(_process_) == process);
-  ASSERT_FALSE(*(_process_) == NULL);
-
-  (*_process_) = NULL;
-
-  ASSERT_TRUE(*(_process_) == NULL);
-
-  delete process;
-  delete _process_;
-}
-
 
 TEST(Process, event)
 {
@@ -737,9 +715,9 @@ TEST(Process, order)
 
   spawn(process1);
 
-  double now = Clock::now(&process1);
+  Time now = Clock::now(&process1);
 
-  double seconds = 1.0;
+  Seconds seconds(1);
 
   Clock::advance(Seconds(1));
 

@@ -79,7 +79,7 @@ public:
   bool discard();
 
   // Waits for this future to become ready, discarded, or failed.
-  bool await(const Duration& duration = Seconds(-1.0)) const;
+  bool await(const Duration& duration = Seconds(-1)) const;
 
   // Return the value associated with this future, waits indefinitely
   // until a value gets associated or until the future is discarded.
@@ -446,6 +446,28 @@ void discard(const std::list<Future<T> >& futures)
   for (iterator = futures.begin(); iterator != futures.end(); ++iterator) {
     Future<T> future = *iterator; // Need a non-const copy to discard.
     future.discard();
+  }
+}
+
+
+template <class T>
+void fail(const std::vector<Promise<T>*>& promises, const std::string& message)
+{
+  typename std::vector<Promise<T>*>::const_iterator iterator;
+  for (iterator = promises.begin(); iterator != promises.end(); ++iterator) {
+    Promise<T>* promise = *iterator;
+    promise->fail(message);
+  }
+}
+
+
+template <class T>
+void fail(const std::list<Promise<T>*>& promises, const std::string& message)
+{
+  typename std::list<Promise<T>*>::const_iterator iterator;
+  for (iterator = promises.begin(); iterator != promises.end(); ++iterator) {
+    Promise<T>* promise = *iterator;
+    promise->fail(message);
   }
 }
 

@@ -105,6 +105,9 @@ if test "x$with_zlib" = "xyes"; then
   ])])
 fi
 
+# Check for libev
+PKG_CHECK_MODULES([LIBEV], [libev], [], [AC_MSG_ERROR([libev library is missing])])
+
 AM_CONDITIONAL([HAS_GPERFTOOLS], [test "x$gperftools" = "xyes"])
 
 # Used for conditionally building source files (e.g., only want to

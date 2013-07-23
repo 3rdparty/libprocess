@@ -27,6 +27,7 @@ libprocess_la_SOURCES =		\
 
 libprocess_la_CPPFLAGS =		\
   -I$(srcdir)/include			\
+  -I/usr/include/libev			\
   -I$(srcdir)/$(STOUT)/include		\
   -I$(BOOST)				\
   -I$(GLOG)/src				\

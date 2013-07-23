@@ -43,10 +43,7 @@ AS_IF([test "x${ac_cv_env_CXXFLAGS_set}" = "x"], [CXXFLAGS="-g"])
 CONFIGURE_ARGS="$ac_configure_args"
 AC_SUBST(CONFIGURE_ARGS)
 
-AC_CONFIG_SUBDIRS([3rdparty/stout])
-
 AC_CONFIG_FILES([Makefile])
-AC_CONFIG_FILES([3rdparty/Makefile])
 
 AC_ARG_ENABLE([install],
               AS_HELP_STRING([--enable-install],

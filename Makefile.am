@@ -5,19 +5,7 @@ ACLOCAL_AMFLAGS = -I m4
 
 AUTOMAKE_OPTIONS = foreign
 
-SUBDIRS = 3rdparty .
-
-include 3rdparty/versions.am
-
-STOUT = 3rdparty/stout
-BOOST = 3rdparty/boost-$(BOOST_VERSION)
-GLOG = 3rdparty/glog-$(GLOG_VERSION)
-GMOCK = 3rdparty/gmock-$(GMOCK_VERSION)
-GPERFTOOLS = 3rdparty/gperftools-$(GPERFTOOLS_VERSION)
-GTEST = $(GMOCK)/gtest
-RY_HTTP_PARSER = 3rdparty/ry-http-parser-$(RY_HTTP_PARSER_VERSION)
-LIBEV = 3rdparty/libev-$(LIBEV_VERSION)
-
+SUBDIRS = .
 
 # Library. It is not installable presently because most people link
 # the libprocess statically into their resulting library or binary and

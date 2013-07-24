@@ -119,6 +119,9 @@ AC_CHECK_LIB([protobuf], [main], [], [AC_MSG_ERROR([protobuf library is missing]
 # Check for gtest
 AC_CHECK_LIB([gtest], [main], [], [AC_MSG_ERROR([gtest library is missing])])
 
+# Check for glog
+PKG_CHECK_MODULES([GLOG], [libglog], [], [AC_MSG_ERROR([glog library is missing])])
+
 AM_CONDITIONAL([HAS_GPERFTOOLS], [test "x$gperftools" = "xyes"])
 
 # Used for conditionally building source files (e.g., only want to

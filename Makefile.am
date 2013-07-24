@@ -35,10 +35,11 @@ libprocess_la_CPPFLAGS =		\
   -I$(RY_HTTP_PARSER)			\
   $(AM_CPPFLAGS)
 
-libprocess_la_LIBADD =			\
-  $(GLOG)/libglog.la			\
-  3rdparty/libry_http_parser.la	\
-  $(LIBEV)/libev.la
+ # TODO (tstclair) use auto-goo to specify LDFLAGS loc
+ libprocess_la_LIBADD =			\
+  -lglog		\
+  -lhttp_parser		\
+  -lev		
 
 if HAS_GPERFTOOLS
 libprocess_la_CPPFLAGS += -I$(GPERFTOOLS)/src

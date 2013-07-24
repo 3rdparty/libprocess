@@ -28,10 +28,11 @@ public:
     settings.on_message_begin = &DataDecoder::on_message_begin;
     settings.on_header_field = &DataDecoder::on_header_field;
     settings.on_header_value = &DataDecoder::on_header_value;
-    settings.on_path = &DataDecoder::on_path;
+    //TODO (tstclair) resolve the structure delta && search higher up the stack for deps.
+    //settings.on_path = &DataDecoder::on_path;
     settings.on_url = &DataDecoder::on_url;
-    settings.on_fragment = &DataDecoder::on_fragment;
-    settings.on_query_string = &DataDecoder::on_query_string;
+    //settings.on_fragment = &DataDecoder::on_fragment;
+    //settings.on_query_string = &DataDecoder::on_query_string;
     settings.on_body = &DataDecoder::on_body;
     settings.on_headers_complete = &DataDecoder::on_headers_complete;
     settings.on_message_complete = &DataDecoder::on_message_complete;
@@ -234,10 +235,10 @@ public:
     settings.on_message_begin = &ResponseDecoder::on_message_begin;
     settings.on_header_field = &ResponseDecoder::on_header_field;
     settings.on_header_value = &ResponseDecoder::on_header_value;
-    settings.on_path = &ResponseDecoder::on_path;
+    //settings.on_path = &ResponseDecoder::on_path;
     settings.on_url = &ResponseDecoder::on_url;
-    settings.on_fragment = &ResponseDecoder::on_fragment;
-    settings.on_query_string = &ResponseDecoder::on_query_string;
+    //settings.on_fragment = &ResponseDecoder::on_fragment;
+    //settings.on_query_string = &ResponseDecoder::on_query_string;
     settings.on_body = &ResponseDecoder::on_body;
     settings.on_headers_complete = &ResponseDecoder::on_headers_complete;
     settings.on_message_complete = &ResponseDecoder::on_message_complete;

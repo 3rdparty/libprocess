@@ -108,6 +108,11 @@ fi
 # Check for libev
 PKG_CHECK_MODULES([LIBEV], [libev], [], [AC_MSG_ERROR([libev library is missing])])
 
+# Check for boost
+AC_LANG_PUSH([C++])
+AC_CHECK_HEADERS([boost/foreach.hpp], [], [AC_MSG_ERROR(You need the Boost libraries.)])
+AC_LANG_POP([C++])
+
 AM_CONDITIONAL([HAS_GPERFTOOLS], [test "x$gperftools" = "xyes"])
 
 # Used for conditionally building source files (e.g., only want to

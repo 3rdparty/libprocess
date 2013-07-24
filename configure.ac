@@ -110,8 +110,11 @@ PKG_CHECK_MODULES([LIBEV], [libev], [], [AC_MSG_ERROR([libev library is missing]
 
 # Check for boost
 AC_LANG_PUSH([C++])
-AC_CHECK_HEADERS([boost/foreach.hpp], [], [AC_MSG_ERROR(You need the Boost libraries.)])
+AC_CHECK_HEADERS([boost/foreach.hpp], [], [AC_MSG_ERROR(Boost libraries is missing)])
 AC_LANG_POP([C++])
+
+# Check for protobuf
+AC_CHECK_LIB([protobuf], [main], [], [AC_MSG_ERROR([protobuf library is missiong])])
 
 AM_CONDITIONAL([HAS_GPERFTOOLS], [test "x$gperftools" = "xyes"])
 

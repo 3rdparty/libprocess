@@ -114,7 +114,10 @@ AC_CHECK_HEADERS([boost/foreach.hpp], [], [AC_MSG_ERROR(Boost libraries is missi
 AC_LANG_POP([C++])
 
 # Check for protobuf
-AC_CHECK_LIB([protobuf], [main], [], [AC_MSG_ERROR([protobuf library is missiong])])
+AC_CHECK_LIB([protobuf], [main], [], [AC_MSG_ERROR([protobuf library is missing])])
+
+# Check for gtest
+AC_CHECK_LIB([gtest], [main], [], [AC_MSG_ERROR([gtest library is missing])])
 
 AM_CONDITIONAL([HAS_GPERFTOOLS], [test "x$gperftools" = "xyes"])
 

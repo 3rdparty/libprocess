@@ -1,0 +1,13 @@
+##################################
+# Pkg-Config file for libprocess #
+##################################
+
+Name: stout
+Description: Mesos library which requires further detail
+URL: https://github.com/3rdparty/libprocess
+Version: @VERSION@
+
+prefix=@prefix@
+includedir=@includedir@
+
+Cflags: -I${includedir}/libprocess

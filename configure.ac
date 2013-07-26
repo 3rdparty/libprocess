@@ -43,7 +43,7 @@ AS_IF([test "x${ac_cv_env_CXXFLAGS_set}" = "x"], [CXXFLAGS="-g"])
 CONFIGURE_ARGS="$ac_configure_args"
 AC_SUBST(CONFIGURE_ARGS)
 
-AC_CONFIG_FILES([Makefile])
+AC_CONFIG_FILES([Makefile include/Makefile libprocess.pc])
 
 AC_ARG_ENABLE([install],
               AS_HELP_STRING([--enable-install],

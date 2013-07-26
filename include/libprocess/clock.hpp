@@ -1,7 +1,7 @@
 #ifndef __PROCESS_CLOCK_HPP__
 #define __PROCESS_CLOCK_HPP__
 
-#include <process/time.hpp>
+#include <libprocess/time.hpp>
 
 #include <stout/duration.hpp>
 

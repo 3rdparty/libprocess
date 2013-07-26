@@ -12,8 +12,8 @@
 #include <tr1/functional>
 #include <tr1/unordered_map>
 
-#include <process/dispatch.hpp>
-#include <process/process.hpp>
+#include <libprocess/dispatch.hpp>
+#include <libprocess/process.hpp>
 
 
 // Provides an implementation of process::post that for a protobuf.

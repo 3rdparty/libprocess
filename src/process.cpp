@@ -45,24 +45,24 @@
 
 #include <boost/shared_array.hpp>
 
-#include <process/clock.hpp>
-#include <process/defer.hpp>
-#include <process/delay.hpp>
-#include <process/dispatch.hpp>
-#include <process/executor.hpp>
-#include <process/filter.hpp>
-#include <process/future.hpp>
-#include <process/gc.hpp>
-#include <process/id.hpp>
-#include <process/io.hpp>
-#include <process/logging.hpp>
-#include <process/mime.hpp>
-#include <process/process.hpp>
-#include <process/profiler.hpp>
-#include <process/socket.hpp>
-#include <process/statistics.hpp>
-#include <process/time.hpp>
-#include <process/timer.hpp>
+#include <libprocess/clock.hpp>
+#include <libprocess/defer.hpp>
+#include <libprocess/delay.hpp>
+#include <libprocess/dispatch.hpp>
+#include <libprocess/executor.hpp>
+#include <libprocess/filter.hpp>
+#include <libprocess/future.hpp>
+#include <libprocess/gc.hpp>
+#include <libprocess/id.hpp>
+#include <libprocess/io.hpp>
+#include <libprocess/logging.hpp>
+#include <libprocess/mime.hpp>
+#include <libprocess/process.hpp>
+#include <libprocess/profiler.hpp>
+#include <libprocess/socket.hpp>
+#include <libprocess/statistics.hpp>
+#include <libprocess/time.hpp>
+#include <libprocess/timer.hpp>
 
 #include <stout/duration.hpp>
 #include <stout/foreach.hpp>

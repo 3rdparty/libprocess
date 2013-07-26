@@ -2,9 +2,9 @@
 
 #include <gmock/gmock.h>
 
-#include <process/gmock.hpp>
-#include <process/gtest.hpp>
-#include <process/process.hpp>
+#include <libprocess/gmock.hpp>
+#include <libprocess/gtest.hpp>
+#include <libprocess/process.hpp>
 
 int main(int argc, char** argv)
 {

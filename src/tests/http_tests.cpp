@@ -7,11 +7,11 @@
 
 #include <string>
 
-#include <process/future.hpp>
-#include <process/gmock.hpp>
-#include <process/gtest.hpp>
-#include <process/http.hpp>
-#include <process/io.hpp>
+#include <libprocess/future.hpp>
+#include <libprocess/gmock.hpp>
+#include <libprocess/gtest.hpp>
+#include <libprocess/http.hpp>
+#include <libprocess/io.hpp>
 
 #include <stout/gtest.hpp>
 #include <stout/nothing.hpp>

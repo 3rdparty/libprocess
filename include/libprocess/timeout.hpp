@@ -1,9 +1,9 @@
 #ifndef __PROCESS_TIMEOUT_HPP__
 #define __PROCESS_TIMEOUT_HPP__
 
-#include <process/process.hpp>
+#include <libprocess/process.hpp>
 
-#include <process/time.hpp>
+#include <libprocess/time.hpp>
 
 #include <stout/duration.hpp>
 

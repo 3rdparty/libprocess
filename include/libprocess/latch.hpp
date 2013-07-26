@@ -1,7 +1,7 @@
 #ifndef __PROCESS_LATCH_HPP__
 #define __PROCESS_LATCH_HPP__
 
-#include <process/pid.hpp>
+#include <libprocess/pid.hpp>
 
 #include <stout/duration.hpp>
 

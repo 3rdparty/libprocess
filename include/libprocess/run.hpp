@@ -3,7 +3,7 @@
 
 #include <tr1/memory> // TODO(benh): Replace shared_ptr with unique_ptr.
 
-#include <process/process.hpp>
+#include <libprocess/process.hpp>
 
 #include <stout/preprocessor.hpp>
 

@@ -2,9 +2,9 @@
 
 #include <string>
 
-#include <process/future.hpp>
-#include <process/gtest.hpp>
-#include <process/io.hpp>
+#include <libprocess/future.hpp>
+#include <libprocess/gtest.hpp>
+#include <libprocess/io.hpp>
 
 #include <stout/gtest.hpp>
 #include <stout/os.hpp>

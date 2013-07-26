@@ -1,7 +1,7 @@
 #ifndef __PROCESS_FILTER_HPP__
 #define __PROCESS_FILTER_HPP__
 
-#include <process/event.hpp>
+#include <libprocess/event.hpp>
 
 namespace process {
 

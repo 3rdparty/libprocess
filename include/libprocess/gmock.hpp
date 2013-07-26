@@ -7,10 +7,10 @@
 
 #include <tr1/tuple>
 
-#include <process/dispatch.hpp>
-#include <process/event.hpp>
-#include <process/filter.hpp>
-#include <process/pid.hpp>
+#include <libprocess/dispatch.hpp>
+#include <libprocess/event.hpp>
+#include <libprocess/filter.hpp>
+#include <libprocess/pid.hpp>
 
 #include <stout/exit.hpp>
 #include <stout/nothing.hpp>

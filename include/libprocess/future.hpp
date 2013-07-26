@@ -14,8 +14,8 @@
 #include <tr1/functional>
 #include <tr1/memory> // TODO(benh): Replace shared_ptr with unique_ptr.
 
-#include <process/latch.hpp>
-#include <process/pid.hpp>
+#include <libprocess/latch.hpp>
+#include <libprocess/pid.hpp>
 
 #include <stout/duration.hpp>
 #include <stout/option.hpp>

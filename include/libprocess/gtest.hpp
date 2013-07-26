@@ -5,9 +5,9 @@
 
 #include <string>
 
-#include <process/clock.hpp>
-#include <process/future.hpp>
-#include <process/http.hpp>
+#include <libprocess/clock.hpp>
+#include <libprocess/future.hpp>
+#include <libprocess/http.hpp>
 
 #include <stout/duration.hpp>
 #include <stout/option.hpp>

@@ -9,13 +9,13 @@
 
 #include <tr1/functional>
 
-#include <process/clock.hpp>
-#include <process/event.hpp>
-#include <process/filter.hpp>
-#include <process/http.hpp>
-#include <process/message.hpp>
-#include <process/mime.hpp>
-#include <process/pid.hpp>
+#include <libprocess/clock.hpp>
+#include <libprocess/event.hpp>
+#include <libprocess/filter.hpp>
+#include <libprocess/http.hpp>
+#include <libprocess/message.hpp>
+#include <libprocess/mime.hpp>
+#include <libprocess/pid.hpp>
 
 #include <stout/duration.hpp>
 #include <stout/thread.hpp>

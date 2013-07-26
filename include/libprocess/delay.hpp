@@ -3,8 +3,8 @@
 
 #include <tr1/functional>
 
-#include <process/dispatch.hpp>
-#include <process/timer.hpp>
+#include <libprocess/dispatch.hpp>
+#include <libprocess/timer.hpp>
 
 #include <stout/duration.hpp>
 #include <stout/preprocessor.hpp>

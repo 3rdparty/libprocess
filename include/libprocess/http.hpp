@@ -9,8 +9,8 @@
 
 #include <limits.h>
 
-#include <process/future.hpp>
-#include <process/pid.hpp>
+#include <libprocess/future.hpp>
+#include <libprocess/pid.hpp>
 
 #include <stout/error.hpp>
 #include <stout/hashmap.hpp>

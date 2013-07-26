@@ -3,9 +3,9 @@
 
 #include <tr1/functional>
 
-#include <process/deferred.hpp>
-#include <process/dispatch.hpp>
-#include <process/executor.hpp>
+#include <libprocess/deferred.hpp>
+#include <libprocess/dispatch.hpp>
+#include <libprocess/executor.hpp>
 
 #include <stout/preprocessor.hpp>
 

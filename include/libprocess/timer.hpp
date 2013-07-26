@@ -5,7 +5,7 @@
 
 #include <tr1/functional>
 
-#include <process/timeout.hpp>
+#include <libprocess/timeout.hpp>
 
 #include <stout/duration.hpp>
 

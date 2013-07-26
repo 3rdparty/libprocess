@@ -1,9 +1,9 @@
 #ifndef __PROCESS_EXECUTOR_HPP__
 #define __PROCESS_EXECUTOR_HPP__
 
-#include <process/deferred.hpp>
-#include <process/dispatch.hpp>
-#include <process/id.hpp>
+#include <libprocess/deferred.hpp>
+#include <libprocess/dispatch.hpp>
+#include <libprocess/id.hpp>
 
 #include <stout/preprocessor.hpp>
 #include <stout/thread.hpp>

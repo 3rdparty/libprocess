@@ -2,8 +2,8 @@
 
 #include <gmock/gmock.h>
 
-#include <process/clock.hpp>
-#include <process/time.hpp>
+#include <libprocess/clock.hpp>
+#include <libprocess/time.hpp>
 
 #include <stout/duration.hpp>
 #include <stout/gtest.hpp>

@@ -3,7 +3,7 @@
 #include <deque>
 #include <string>
 
-#include <process/socket.hpp>
+#include <libprocess/socket.hpp>
 
 #include <stout/gtest.hpp>
 

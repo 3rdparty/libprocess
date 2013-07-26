@@ -3,8 +3,8 @@
 
 #include <tr1/functional>
 
-#include <process/future.hpp>
-#include <process/pid.hpp>
+#include <libprocess/future.hpp>
+#include <libprocess/pid.hpp>
 
 #include <stout/preprocessor.hpp>
 

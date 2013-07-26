@@ -4,10 +4,10 @@
 #include <tr1/functional>
 #include <tr1/memory> // TODO(benh): Replace all shared_ptr with unique_ptr.
 
-#include <process/future.hpp>
-#include <process/http.hpp>
-#include <process/message.hpp>
-#include <process/socket.hpp>
+#include <libprocess/future.hpp>
+#include <libprocess/http.hpp>
+#include <libprocess/message.hpp>
+#include <libprocess/socket.hpp>
 
 namespace process {
 

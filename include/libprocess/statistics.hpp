@@ -1,9 +1,9 @@
 #ifndef __PROCESS_STATISTICS_HPP__
 #define __PROCESS_STATISTICS_HPP__
 
-#include <process/clock.hpp>
-#include <process/future.hpp>
-#include <process/time.hpp>
+#include <libprocess/clock.hpp>
+#include <libprocess/future.hpp>
+#include <libprocess/time.hpp>
 
 #include <stout/duration.hpp>
 #include <stout/none.hpp>

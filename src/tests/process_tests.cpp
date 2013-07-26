@@ -8,21 +8,21 @@
 #include <string>
 #include <sstream>
 
-#include <process/async.hpp>
-#include <process/collect.hpp>
-#include <process/clock.hpp>
-#include <process/defer.hpp>
-#include <process/delay.hpp>
-#include <process/dispatch.hpp>
-#include <process/executor.hpp>
-#include <process/filter.hpp>
-#include <process/future.hpp>
-#include <process/gc.hpp>
-#include <process/gmock.hpp>
-#include <process/gtest.hpp>
-#include <process/process.hpp>
-#include <process/run.hpp>
-#include <process/time.hpp>
+#include <libprocess/async.hpp>
+#include <libprocess/collect.hpp>
+#include <libprocess/clock.hpp>
+#include <libprocess/defer.hpp>
+#include <libprocess/delay.hpp>
+#include <libprocess/dispatch.hpp>
+#include <libprocess/executor.hpp>
+#include <libprocess/filter.hpp>
+#include <libprocess/future.hpp>
+#include <libprocess/gc.hpp>
+#include <libprocess/gmock.hpp>
+#include <libprocess/gtest.hpp>
+#include <libprocess/process.hpp>
+#include <libprocess/run.hpp>
+#include <libprocess/time.hpp>
 
 #include <stout/duration.hpp>
 #include <stout/nothing.hpp>

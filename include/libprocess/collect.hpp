@@ -5,11 +5,11 @@
 
 #include <list>
 
-#include <process/defer.hpp>
-#include <process/delay.hpp>
-#include <process/future.hpp>
-#include <process/process.hpp>
-#include <process/timeout.hpp>
+#include <libprocess/defer.hpp>
+#include <libprocess/delay.hpp>
+#include <libprocess/future.hpp>
+#include <libprocess/process.hpp>
+#include <libprocess/timeout.hpp>
 
 #include <stout/none.hpp>
 #include <stout/option.hpp>

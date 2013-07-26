@@ -4,7 +4,7 @@
 #include <cstring> // For size_t.
 #include <string>
 
-#include <process/future.hpp>
+#include <libprocess/future.hpp>
 
 namespace process {
 namespace io {

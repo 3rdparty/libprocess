@@ -1,7 +1,7 @@
 #ifndef __PROCESS_ONCE_HPP__
 #define __PROCESS_ONCE_HPP__
 
-#include <process/future.hpp>
+#include <libprocess/future.hpp>
 
 #include <stout/nothing.hpp>
 

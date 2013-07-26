@@ -2,11 +2,11 @@
 
 #include <map>
 
-#include <process/clock.hpp>
-#include <process/future.hpp>
-#include <process/gtest.hpp>
-#include <process/statistics.hpp>
-#include <process/time.hpp>
+#include <libprocess/clock.hpp>
+#include <libprocess/future.hpp>
+#include <libprocess/gtest.hpp>
+#include <libprocess/statistics.hpp>
+#include <libprocess/time.hpp>
 
 #include <stout/duration.hpp>
 

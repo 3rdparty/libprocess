@@ -7,14 +7,14 @@
 #include <utility>
 #include <vector>
 
-#include <process/clock.hpp>
-#include <process/delay.hpp>
-#include <process/dispatch.hpp>
-#include <process/future.hpp>
-#include <process/http.hpp>
-#include <process/process.hpp>
-#include <process/statistics.hpp>
-#include <process/time.hpp>
+#include <libprocess/clock.hpp>
+#include <libprocess/delay.hpp>
+#include <libprocess/dispatch.hpp>
+#include <libprocess/future.hpp>
+#include <libprocess/http.hpp>
+#include <libprocess/process.hpp>
+#include <libprocess/statistics.hpp>
+#include <libprocess/time.hpp>
 
 #include <stout/error.hpp>
 #include <stout/duration.hpp>

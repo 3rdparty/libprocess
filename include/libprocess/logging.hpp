@@ -3,11 +3,11 @@
 
 #include <glog/logging.h>
 
-#include <process/delay.hpp>
-#include <process/future.hpp>
-#include <process/http.hpp>
-#include <process/process.hpp>
-#include <process/timeout.hpp>
+#include <libprocess/delay.hpp>
+#include <libprocess/future.hpp>
+#include <libprocess/http.hpp>
+#include <libprocess/process.hpp>
+#include <libprocess/timeout.hpp>
 
 #include <stout/duration.hpp>
 #include <stout/numify.hpp>

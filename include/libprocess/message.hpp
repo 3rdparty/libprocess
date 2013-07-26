@@ -3,7 +3,7 @@
 
 #include <string>
 
-#include <process/pid.hpp>
+#include <libprocess/pid.hpp>
 
 namespace process {
 

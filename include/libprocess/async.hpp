@@ -1,10 +1,10 @@
 #ifndef __ASYNC_HPP__
 #define __ASYNC_HPP__
 
-#include <process/dispatch.hpp>
-#include <process/future.hpp>
-#include <process/id.hpp>
-#include <process/process.hpp>
+#include <libprocess/dispatch.hpp>
+#include <libprocess/future.hpp>
+#include <libprocess/id.hpp>
+#include <libprocess/process.hpp>
 
 #include <tr1/functional>
 

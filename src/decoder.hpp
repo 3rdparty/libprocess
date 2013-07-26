@@ -7,8 +7,8 @@
 #include <string>
 #include <vector>
 
-#include <process/http.hpp>
-#include <process/socket.hpp>
+#include <libprocess/http.hpp>
+#include <libprocess/socket.hpp>
 
 #include <stout/foreach.hpp>
 #include <stout/gzip.hpp>

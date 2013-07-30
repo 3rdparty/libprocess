@@ -65,11 +65,11 @@ tests_CPPFLAGS =			\
   $(libprocess_la_CPPFLAGS)
 
 tests_LDADD =				\
-  third_party/libgmock.la		\
-  libprocess.la				\
-  $(GLOG)/libglog.la			\
-  third_party/libry_http_parser.la	\
-  $(LIBEV)/libev.la
+  -lpthread				\
+  -lprocess				\
+  -lglog				\
+  -lhttp_parser				\
+  -lev
 
 TESTS = tests
 

@@ -56,10 +56,12 @@ tests_SOURCES =							\
   src/tests/main.cpp						\
   src/tests/process_tests.cpp					\
   src/tests/statistics_tests.cpp				\
-  src/tests/time_tests.cpp
+  src/tests/time_tests.cpp 					\
+  /usr/src/gmock/gmock-all.cc
 
 tests_CPPFLAGS =			\
   -I$(top_srcdir)/src			\
+  -I/usr/src/gmock			\
   -I$(GTEST)/include			\
   -I$(GMOCK)/include			\
   $(libprocess_la_CPPFLAGS)

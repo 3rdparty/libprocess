@@ -1,5 +1,5 @@
-#ifndef __PROCESS_LOGGING_HPP__
-#define __PROCESS_LOGGING_HPP__
+#ifndef __LIBPROCESS_LOGGING_HPP__
+#define __LIBPROCESS_LOGGING_HPP__
 
 #include <glog/logging.h>
 

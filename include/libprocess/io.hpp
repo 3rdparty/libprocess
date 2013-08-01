@@ -1,5 +1,5 @@
-#ifndef __PROCESS_IO_HPP__
-#define __PROCESS_IO_HPP__
+#ifndef __LIBPROCESS_IO_HPP__
+#define __LIBPROCESS_IO_HPP__
 
 #include <cstring> // For size_t.
 #include <string>

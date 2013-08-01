@@ -1,5 +1,5 @@
-#ifndef __PROCESS_GC_HPP__
-#define __PROCESS_GC_HPP__
+#ifndef __LIBPROCESS_GC_HPP__
+#define __LIBPROCESS_GC_HPP__
 
 #include <map>
 

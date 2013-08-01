@@ -1,3 +1,6 @@
+#ifndef __LIBPROCESS_DETAILS_HPP__
+#define __LIBPROCESS_DETAILS_HPP__
+
 template <MSGID ID> class tuple;
 
 #undef IDENTITY

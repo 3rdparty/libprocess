@@ -1,5 +1,5 @@
-#ifndef __PROCESS_TIMER_HPP__
-#define __PROCESS_TIMER_HPP__
+#ifndef __LIBPROCESS_TIMER_HPP__
+#define __LIBPROCESS_TIMER_HPP__
 
 #include <stdlib.h> // For abort.
 

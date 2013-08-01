@@ -1,5 +1,5 @@
-#ifndef __PROCESS_PID_HPP__
-#define __PROCESS_PID_HPP__
+#ifndef __LIBPROCESS_PID_HPP__
+#define __LIBPROCESS_PID_HPP__
 
 #include <stdint.h>
 

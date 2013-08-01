@@ -1,5 +1,5 @@
-#ifndef __PROCESS_PROFILER_HPP__
-#define __PROCESS_PROFILER_HPP__
+#ifndef __LIBPROCESS_PROFILER_HPP__
+#define __LIBPROCESS_PROFILER_HPP__
 
 #include <glog/logging.h>
 

@@ -1,5 +1,5 @@
-#ifndef __PROCESS_TUPLES_HPP__
-#define __PROCESS_TUPLES_HPP__
+#ifndef __LIBPROCESS_TUPLES_HPP__
+#define __LIBPROCESS_TUPLES_HPP__
 
 #include <stdlib.h>
 

@@ -1,5 +1,5 @@
-#ifndef __PROCESS_EXECUTOR_HPP__
-#define __PROCESS_EXECUTOR_HPP__
+#ifndef __LIBPROCESS_EXECUTOR_HPP__
+#define __LIBPROCESS_EXECUTOR_HPP__
 
 #include <libprocess/deferred.hpp>
 #include <libprocess/dispatch.hpp>

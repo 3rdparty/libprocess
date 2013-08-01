@@ -1,5 +1,5 @@
-#ifndef __PROCESS_CLOCK_HPP__
-#define __PROCESS_CLOCK_HPP__
+#ifndef __LIBPROCESS_CLOCK_HPP__
+#define __LIBPROCESS_CLOCK_HPP__
 
 #include <libprocess/time.hpp>
 

@@ -1,5 +1,5 @@
-#ifndef __PROCESS_ONCE_HPP__
-#define __PROCESS_ONCE_HPP__
+#ifndef __LIBPROCESS_ONCE_HPP__
+#define __LIBPROCESS_ONCE_HPP__
 
 #include <libprocess/future.hpp>
 

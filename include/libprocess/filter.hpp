@@ -1,5 +1,5 @@
-#ifndef __PROCESS_FILTER_HPP__
-#define __PROCESS_FILTER_HPP__
+#ifndef __LIBPROCESS_FILTER_HPP__
+#define __LIBPROCESS_FILTER_HPP__
 
 #include <libprocess/event.hpp>
 

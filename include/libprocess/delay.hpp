@@ -1,5 +1,5 @@
-#ifndef __PROCESS_DELAY_HPP__
-#define __PROCESS_DELAY_HPP__
+#ifndef __LIBPROCESS_DELAY_HPP__
+#define __LIBPROCESS_DELAY_HPP__
 
 #include <tr1/functional>
 

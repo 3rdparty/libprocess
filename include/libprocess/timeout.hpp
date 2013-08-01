@@ -1,5 +1,5 @@
-#ifndef __PROCESS_TIMEOUT_HPP__
-#define __PROCESS_TIMEOUT_HPP__
+#ifndef __LIBPROCESS_TIMEOUT_HPP__
+#define __LIBPROCESS_TIMEOUT_HPP__
 
 #include <libprocess/process.hpp>
 

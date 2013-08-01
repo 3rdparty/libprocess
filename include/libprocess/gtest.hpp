@@ -1,5 +1,5 @@
-#ifndef __PROCESS_GTEST_HPP__
-#define __PROCESS_GTEST_HPP__
+#ifndef __LIBPROCESS_GTEST_HPP__
+#define __LIBPROCESS_GTEST_HPP__
 
 #include <gtest/gtest.h>
 

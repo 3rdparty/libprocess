@@ -1,5 +1,5 @@
-#ifndef __PROCESS_PROTOBUF_HPP__
-#define __PROCESS_PROTOBUF_HPP__
+#ifndef __LIBPROCESS_PROTOBUF_HPP__
+#define __LIBPROCESS_PROTOBUF_HPP__
 
 #include <glog/logging.h>
 

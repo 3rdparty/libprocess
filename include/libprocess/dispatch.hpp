@@ -1,5 +1,5 @@
-#ifndef __PROCESS_DISPATCH_HPP__
-#define __PROCESS_DISPATCH_HPP__
+#ifndef __LIBPROCESS_DISPATCH_HPP__
+#define __LIBPROCESS_DISPATCH_HPP__
 
 #include <string>
 

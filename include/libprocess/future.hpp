@@ -1,5 +1,5 @@
-#ifndef __PROCESS_FUTURE_HPP__
-#define __PROCESS_FUTURE_HPP__
+#ifndef __LIBPROCESS_FUTURE_HPP__
+#define __LIBPROCESS_FUTURE_HPP__
 
 #include <assert.h>
 #include <stdlib.h> // For abort.

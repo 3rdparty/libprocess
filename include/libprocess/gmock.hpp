@@ -1,5 +1,5 @@
-#ifndef __PROCESS_GMOCK_HPP__
-#define __PROCESS_GMOCK_HPP__
+#ifndef __LIBPROCESS_GMOCK_HPP__
+#define __LIBPROCESS_GMOCK_HPP__
 
 #include <pthread.h>
 

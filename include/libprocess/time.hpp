@@ -1,5 +1,5 @@
-#ifndef __PROCESS_TIME_HPP__
-#define __PROCESS_TIME_HPP__
+#ifndef __LIBPROCESS_TIME_HPP__
+#define __LIBPROCESS_TIME_HPP__
 
 #include <iomanip>
 

@@ -1,5 +1,5 @@
-#ifndef __ASYNC_HPP__
-#define __ASYNC_HPP__
+#ifndef __LIBPROCESS_ASYNC_HPP__
+#define __LIBPROCESS_ASYNC_HPP__
 
 #include <libprocess/dispatch.hpp>
 #include <libprocess/future.hpp>

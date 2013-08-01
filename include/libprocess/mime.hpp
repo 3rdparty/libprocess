@@ -1,5 +1,5 @@
-#ifndef __PROCESS_MIME_HPP__
-#define __PROCESS_MIME_HPP__
+#ifndef __LIBPROCESS_MIME_HPP__
+#define __LIBPROCESS_MIME_HPP__
 
 namespace process {
 namespace mime {

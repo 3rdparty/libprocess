@@ -1,5 +1,5 @@
-#ifndef __PROCESS_ID_HPP__
-#define __PROCESS_ID_HPP__
+#ifndef __LIBPROCESS_ID_HPP__
+#define __LIBPROCESS_ID_HPP__
 
 #include <string>
 

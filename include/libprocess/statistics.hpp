@@ -1,5 +1,5 @@
-#ifndef __PROCESS_STATISTICS_HPP__
-#define __PROCESS_STATISTICS_HPP__
+#ifndef __LIBPROCESS_STATISTICS_HPP__
+#define __LIBPROCESS_STATISTICS_HPP__
 
 #include <libprocess/clock.hpp>
 #include <libprocess/future.hpp>

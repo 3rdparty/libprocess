@@ -1,5 +1,5 @@
-#ifndef __PROCESS_MESSAGE_HPP__
-#define __PROCESS_MESSAGE_HPP__
+#ifndef __LIBPROCESS_MESSAGE_HPP__
+#define __LIBPROCESS_MESSAGE_HPP__
 
 #include <string>
 

@@ -1,5 +1,5 @@
-#ifndef __PROCESS_EVENT_HPP__
-#define __PROCESS_EVENT_HPP__
+#ifndef __LIBPROCESS_EVENT_HPP__
+#define __LIBPROCESS_EVENT_HPP__
 
 #include <tr1/functional>
 #include <tr1/memory> // TODO(benh): Replace all shared_ptr with unique_ptr.

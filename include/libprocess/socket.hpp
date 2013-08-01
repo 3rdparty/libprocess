@@ -1,5 +1,5 @@
-#ifndef __PROCESS_SOCKET_HPP__
-#define __PROCESS_SOCKET_HPP__
+#ifndef __LIBPROCESS_SOCKET_HPP__
+#define __LIBPROCESS_SOCKET_HPP__
 
 #include <assert.h>
 #include <unistd.h> // For close.

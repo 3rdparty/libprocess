@@ -1,5 +1,5 @@
-#ifndef __PROCESS_PROCESS_HPP__
-#define __PROCESS_PROCESS_HPP__
+#ifndef __LIBPROCESS_PROCESS_HPP__
+#define __LIBPROCESS_PROCESS_HPP__
 
 #include <stdint.h>
 #include <pthread.h>

@@ -1,5 +1,5 @@
-#ifndef __PROCESS_RUN_HPP__
-#define __PROCESS_RUN_HPP__
+#ifndef __LIBPROCESS_RUN_HPP__
+#define __LIBPROCESS_RUN_HPP__
 
 #include <tr1/memory> // TODO(benh): Replace shared_ptr with unique_ptr.
 

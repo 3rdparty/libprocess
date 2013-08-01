@@ -1,5 +1,5 @@
-#ifndef __PROCESS_DEFERRED_HPP__
-#define __PROCESS_DEFERRED_HPP__
+#ifndef __LIBPROCESS_DEFERRED_HPP__
+#define __LIBPROCESS_DEFERRED_HPP__
 
 #include <tr1/functional>
 

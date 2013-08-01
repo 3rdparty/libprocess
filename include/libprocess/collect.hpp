@@ -1,5 +1,5 @@
-#ifndef __PROCESS_COLLECT_HPP__
-#define __PROCESS_COLLECT_HPP__
+#ifndef __LIBPROCESS_COLLECT_HPP__
+#define __LIBPROCESS_COLLECT_HPP__
 
 #include <assert.h>
 

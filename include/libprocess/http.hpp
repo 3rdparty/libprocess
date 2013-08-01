@@ -1,5 +1,5 @@
-#ifndef __PROCESS_HTTP_HPP__
-#define __PROCESS_HTTP_HPP__
+#ifndef __LIBPROCESS_HTTP_HPP__
+#define __LIBPROCESS_HTTP_HPP__
 
 #include <cctype>
 #include <cstdlib>

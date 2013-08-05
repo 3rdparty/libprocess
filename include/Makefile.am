@@ -15,6 +15,7 @@ nobase_include_HEADERS =		\
   libprocess/gc.hpp			\
   libprocess/gmock.hpp			\
   libprocess/gtest.hpp			\
+  libprocess/help.hpp			\
   libprocess/http.hpp			\
   libprocess/id.hpp			\
   libprocess/io.hpp			\

@@ -5,9 +5,9 @@
 #include <string>
 #include <vector>
 
-#include <process/future.hpp>
-#include <process/http.hpp>
-#include <process/process.hpp>
+#include <libprocess/future.hpp>
+#include <libprocess/http.hpp>
+#include <libprocess/process.hpp>
 
 #include <stout/foreach.hpp>
 #include <stout/json.hpp>

@@ -11,6 +11,7 @@
 #include <libprocess/delay.hpp>
 #include <libprocess/dispatch.hpp>
 #include <libprocess/future.hpp>
+#include <libprocess/help.hpp>
 #include <libprocess/http.hpp>
 #include <libprocess/process.hpp>
 #include <libprocess/statistics.hpp>
@@ -101,14 +102,17 @@ public:
 protected:
   virtual void initialize()
   {
-    route("/snapshot.json", &StatisticsProcess::snapshot);
-    route("/series.json", &StatisticsProcess::series);
+    route("/snapshot.json", SNAPSHOT_HELP, &StatisticsProcess::snapshot);
+    route("/series.json", SERIES_HELP, &StatisticsProcess::series);
 
     // Schedule the first truncation.
     delay(STATISTICS_TRUNCATION_INTERVAL, self(), &StatisticsProcess::truncate);
   }
 
 private:
+  static const string SNAPSHOT_HELP;
+  static const string SERIES_HELP;
+
   // Removes values for the specified statistic that occurred outside
   // the time series window.
   // NOTE: We always ensure there is at least 1 value left for a statistic,
@@ -138,6 +142,32 @@ private:
   // This maps from {context: {name: [meters] } }.
   hashmap<string, hashmap<string, list<Owned<meters::Meter> > > > meters;
 };
+
+
+const string StatisticsProcess::SERIES_HELP = HELP(
+    TLDR(
+        "Provides the time series for ..."),
+    USAGE(
+        "/statistics/series.json..."),
+    DESCRIPTION(
+        "...",
+        "",
+        "Query parameters:",
+        "",
+        ">        param=VALUE          Some description here"));
+
+
+const string StatisticsProcess::SNAPSHOT_HELP = HELP(
+    TLDR(
+        "Provides a snapshot of the current statistics  ..."),
+    USAGE(
+        "/statistics/snapshot.json..."),
+    DESCRIPTION(
+        "...",
+        "",
+        "Query parameters:",
+        "",
+        ">        param=VALUE          Some description here"));
 
 
 Try<Nothing> StatisticsProcess::meter(

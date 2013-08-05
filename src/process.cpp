@@ -53,6 +53,7 @@
 #include <libprocess/filter.hpp>
 #include <libprocess/future.hpp>
 #include <libprocess/gc.hpp>
+#include <libprocess/help.hpp>
 #include <libprocess/id.hpp>
 #include <libprocess/io.hpp>
 #include <libprocess/logging.hpp>
@@ -295,6 +296,56 @@ private:
 };
 
 
+// Helper for creating routes without a process.
+// TODO(benh): Move this into route.hpp.
+class Route
+{
+public:
+  Route(const string& name,
+        const Option<string>& help,
+        const lambda::function<Future<Response>(const Request&)>& handler)
+  {
+    process = new RouteProcess(name, help, handler);
+    spawn(process);
+  }
+
+  ~Route()
+  {
+    terminate(process);
+    wait(process);
+  }
+
+private:
+  class RouteProcess : public Process<RouteProcess>
+  {
+  public:
+    RouteProcess(
+        const string& name,
+        const Option<string>& _help,
+        const lambda::function<Future<Response>(const Request&)>& _handler)
+      : ProcessBase(strings::remove(name, "/", strings::PREFIX)),
+        help(_help),
+        handler(_handler) {}
+
+  protected:
+    virtual void initialize()
+    {
+      route("/", help, &RouteProcess::handle);
+    }
+
+    Future<Response> handle(const Request& request)
+    {
+      return handler(request);
+    }
+
+    const Option<string> help;
+    const lambda::function<Future<Response>(const Request&)> handler;
+  };
+
+  RouteProcess* process;
+};
+
+
 class SocketManager
 {
 public:
@@ -391,6 +442,9 @@ public:
 
   void settle();
 
+  // The /__processes__ route.
+  Future<Response> __processes__(const Request&);
+
 private:
   // Delegate process name to receive root HTTP requests.
   const string delegate;
@@ -409,6 +463,56 @@ private:
   // Number of running processes, to support Clock::settle operation.
   int running;
 };
+
+
+// Help strings.
+const string Logging::TOGGLE_HELP = HELP(
+    TLDR(
+        "Sets the logging verbosity level for a specified duration."),
+    USAGE(
+        "/logging/toggle?level=VALUE&duration=VALUE"),
+    DESCRIPTION(
+        "The libprocess library uses [glog][glog] for logging. The library",
+        "only uses verbose logging which means nothing will be output unless",
+        "the verbosity level is set (by default it's 0, libprocess uses"
+        "levels 1, 2, and 3).",
+        "",
+        "**NOTE:** If your application uses glog this will also affect",
+        "your verbose logging.",
+        "",
+        "Required query parameters:",
+        "",
+        ">        level=VALUE          Verbosity level (e.g., 1, 2, 3)",
+        ">        duration=VALUE       Duration to keep verbosity level",
+        ">                             toggled (e.g., 10secs, 15mins, etc.)"),
+    REFERENCES(
+        "[glog]: https://code.google.com/p/google-glog"));
+
+
+const string Profiler::START_HELP = HELP(
+    TLDR(
+        "Starts profiling ..."),
+    USAGE(
+        "/profiler/start..."),
+    DESCRIPTION(
+        "...",
+        "",
+        "Query parameters:",
+        "",
+        ">        param=VALUE          Some description here"));
+
+
+const string Profiler::STOP_HELP = HELP(
+    TLDR(
+        "Stops profiling ..."),
+    USAGE(
+        "/profiler/stop..."),
+    DESCRIPTION(
+        "...",
+        "",
+        "Query parameters:",
+        "",
+        ">        param=VALUE          Some description here"));
 
 
 // Unique id that can be assigned to each process.
@@ -472,12 +576,16 @@ static synchronizable(filterer) = SYNCHRONIZED_INITIALIZER_RECURSIVE;
 // Global garbage collector.
 PID<GarbageCollector> gc;
 
+// Global help.
+PID<Help> help;
+
 // Per thread process pointer.
 ThreadLocal<ProcessBase>* _process_ = new ThreadLocal<ProcessBase>();
 
 // Per thread executor pointer.
 ThreadLocal<Executor>* _executor_ = new ThreadLocal<Executor>();
 
+const Duration LIBPROCESS_STATISTICS_WINDOW = Days(1);
 
 // We namespace the clock related variables to keep them well
 // named. In the future we'll probably want to associate a clock with
@@ -1400,6 +1508,9 @@ void initialize(const string& delegate)
   // Create global garbage collector process.
   gc = spawn(new GarbageCollector());
 
+  // Create global help process.
+  help = spawn(new Help(), true);
+
   // Create the global logging process.
   spawn(new Logging(), true);
 
@@ -1407,16 +1518,32 @@ void initialize(const string& delegate)
   spawn(new Profiler(), true);
 
   // Create the global statistics.
-  // TODO(bmahler): Investigate memory implications of this window
-  // size. We may also want to provide a maximum memory size rather than
-  // time window. Or, offload older data to disk, etc.
-  process::statistics = new Statistics(Weeks(2));
+  value = getenv("LIBPROCESS_STATISTICS_WINDOW");
+  if (value != NULL) {
+    Try<Duration> window = Duration::parse(string(value));
+    if (window.isError()) {
+      LOG(FATAL) << "LIBPROCESS_STATISTICS_WINDOW=" << value
+                 << " is not a valid duration: " << window.error();
+    }
+    statistics = new Statistics(window.get());
+  } else {
+    // TODO(bmahler): Investigate memory implications of this window
+    // size. We may also want to provide a maximum memory size rather than
+    // time window. Or, offload older data to disk, etc.
+    statistics = new Statistics(LIBPROCESS_STATISTICS_WINDOW);
+  }
 
   // Initialize the mime types.
   mime::initialize();
 
   // Initialize the response statuses.
   http::initialize();
+
+  // Add a route for getting process information.
+  lambda::function<Future<Response>(const Request&)> __processes__ =
+    lambda::bind(&ProcessManager::__processes__, process_manager, lambda::_1);
+
+  new Route("/__processes__", None(), __processes__);
 
   char temp[INET_ADDRSTRLEN];
   if (inet_ntop(AF_INET, (in_addr*) &__ip__, temp, INET_ADDRSTRLEN) == NULL) {
@@ -2313,6 +2440,7 @@ bool ProcessManager::deliver(
   return true;
 }
 
+
 bool ProcessManager::deliver(
     const UPID& to,
     Event* event,
@@ -2769,6 +2897,86 @@ void ProcessManager::settle()
 }
 
 
+Future<Response> ProcessManager::__processes__(const Request&)
+{
+  JSON::Array array;
+
+  synchronized (processes) {
+    foreachvalue (const ProcessBase* process, process_manager->processes) {
+      JSON::Object object;
+      object.values["id"] = process->pid.id;
+
+      JSON::Array events;
+
+      struct JSONVisitor : EventVisitor
+      {
+        JSONVisitor(JSON::Array* _events) : events(_events) {}
+
+        virtual void visit(const MessageEvent& event)
+        {
+          JSON::Object object;
+          object.values["type"] = "MESSAGE";
+
+          const Message& message = *event.message;
+
+          object.values["name"] = message.name;
+          object.values["from"] = string(message.from);
+          object.values["to"] = string(message.to);
+          object.values["body"] = message.body;
+
+          events->values.push_back(object);
+        }
+
+        virtual void visit(const HttpEvent& event)
+        {
+          JSON::Object object;
+          object.values["type"] = "HTTP";
+
+          const Request& request = *event.request;
+
+          object.values["method"] = request.method;
+          object.values["url"] = request.url;
+
+          events->values.push_back(object);
+        }
+
+        virtual void visit(const DispatchEvent& event)
+        {
+          JSON::Object object;
+          object.values["type"] = "DISPATCH";
+          events->values.push_back(object);
+        }
+
+        virtual void visit(const ExitedEvent& event)
+        {
+          JSON::Object object;
+          object.values["type"] = "EXITED";
+          events->values.push_back(object);
+        }
+
+        virtual void visit(const TerminateEvent& event)
+        {
+          JSON::Object object;
+          object.values["type"] = "TERMINATE";
+          events->values.push_back(object);
+        }
+
+        JSON::Array* events;
+      } visitor(&events);
+
+      foreach (Event* event, process->events) {
+        event->visit(&visitor);
+      }
+
+      object.values["events"] = events;
+      array.values.push_back(object);
+    }
+  }
+
+  return OK(array);
+}
+
+
 Timer Timer::create(
     const Duration& duration,
     const lambda::function<void(void)>& thunk)
@@ -3034,6 +3242,21 @@ UPID ProcessBase::link(const UPID& to)
 
   return to;
 }
+
+
+bool ProcessBase::route(
+    const string& name,
+    const Option<string>& help_,
+    const HttpRequestHandler& handler)
+{
+  if (name.find('/') != 0) {
+    return false;
+  }
+  handlers.http[name.substr(1)] = handler;
+  dispatch(help, &Help::add, pid.id, name, help_);
+  return true;
+}
+
 
 
 UPID spawn(ProcessBase* process, bool manage)
@@ -3392,8 +3615,17 @@ Future<Response> get(const UPID& upid, const string& path, const string& query)
 
   std::ostringstream out;
 
-  // TODO(bmahler): Add the Host header for HTTP 1.1.
-  out << "GET /" << upid.id << "/" << path << "?" << query << " HTTP/1.1\r\n"
+  if (query.empty()) {
+    out << "GET /" << upid.id << "/" << path << " HTTP/1.1\r\n";
+  } else {
+    out << "GET /" << upid.id << "/" << path << "?" << query << " HTTP/1.1\r\n";
+  }
+
+  // Call inet_ntop since inet_ntoa is not thread-safe!
+  char ip[INET_ADDRSTRLEN];
+  PCHECK(inet_ntop(AF_INET, (in_addr *) &upid.ip, ip, INET_ADDRSTRLEN) != NULL);
+
+  out << "Host: " << ip << ":" << upid.port << "\r\n"
       << "Connection: close\r\n"
       << "\r\n";
 

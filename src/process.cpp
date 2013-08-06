@@ -1166,10 +1166,10 @@ void* schedule(void* arg)
       Gate::state_t old = gate->approach();
       process = process_manager->dequeue();
       if (process == NULL) {
-	gate->arrive(old); // Wait at gate if idle.
-	continue;
+        gate->arrive(old); // Wait at gate if idle.
+        continue;
       } else {
-	gate->leave();
+        gate->leave();
       }
     }
     process_manager->resume(process);

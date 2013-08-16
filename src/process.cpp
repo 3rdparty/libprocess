@@ -1093,7 +1093,7 @@ void send_file(struct ev_loop* loop, ev_io* watcher, int revents)
     fd = encoder->next(&offset, &size);
     CHECK(size > 0);
 
-    ssize_t length = sendfile(s, fd, offset, size);
+    ssize_t length = os::sendfile(s, fd, offset, size);
 
     if (length < 0 && (errno == EINTR)) {
       // Interrupted, try again now.
@@ -3381,6 +3381,23 @@ void post(const UPID& to, const string& name, const char* data, size_t length)
 }
 
 
+void post(const UPID& from,
+          const UPID& to,
+          const string& name,
+          const char* data,
+          size_t length)
+{
+  process::initialize();
+
+  if (!to) {
+    return;
+  }
+
+  // Encode and transport outgoing message.
+  transport(encode(from, to, name, string(data, length)));
+}
+
+
 namespace io {
 
 namespace internal {
@@ -3609,6 +3626,7 @@ Future<Response> get(const UPID& upid, const string& path, const string& query)
   addr.sin_addr.s_addr = upid.ip;
 
   if (connect(s, (sockaddr*) &addr, sizeof(addr)) < 0) {
+    os::close(s);
     return Future<Response>::failed(
         string("Failed to connect: ") + strerror(errno));
   }
@@ -3640,6 +3658,7 @@ Future<Response> get(const UPID& upid, const string& path, const string& query)
       if (errno == EINTR) {
         continue;
       }
+      os::close(s);
       return Future<Response>::failed(
           string("Failed to write: ") + strerror(errno));
     }
@@ -3649,6 +3668,7 @@ Future<Response> get(const UPID& upid, const string& path, const string& query)
 
   Try<Nothing> nonblock = os::nonblock(s);
   if (!nonblock.isSome()) {
+    os::close(s);
     return Future<Response>::failed(
         "Failed to set nonblock: " + nonblock.error());
   }

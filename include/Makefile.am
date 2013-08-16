@@ -20,6 +20,7 @@ nobase_include_HEADERS =		\
   libprocess/id.hpp			\
   libprocess/io.hpp			\
   libprocess/latch.hpp			\
+  libprocess/limiter.hpp                \
   libprocess/logging.hpp			\
   libprocess/message.hpp			\
   libprocess/mime.hpp			\

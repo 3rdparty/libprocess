@@ -1079,7 +1079,7 @@ public:
 };
 
 
-TEST(Process, remote)
+TEST(Process, DISABLED_remote)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -1219,7 +1219,7 @@ public:
 };
 
 
-TEST(Process, provide)
+TEST(Process, DISABLED_provide)
 {
   const Try<string>& mkdtemp = os::mkdtemp();
   ASSERT_SOME(mkdtemp);

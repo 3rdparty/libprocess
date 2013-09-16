@@ -42,7 +42,7 @@ public:
 };
 
 
-TEST(HTTP, Endpoints)
+TEST(HTTP, DISABLED_Endpoints)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 

@@ -69,7 +69,7 @@ AC_ARG_WITH([zlib],
 # Do some OS specific setup.
 case "${target_os}" in
   linux*)
-    LIBS="$LIBS -lrt" # For clock_gettime() in stout/stopwatch.hpp.
+    #LIBS="$LIBS -lrt" # For clock_gettime() in stout/stopwatch.hpp.
     OS_NAME=linux # Used below for OS_LINUX.
     ;;
   *)
@@ -117,7 +117,7 @@ AC_LANG_POP([C++])
 PKG_CHECK_MODULES([PROTOBUF], [protobuf], [], [AC_MSG_ERROR([protobuf library is missing])])
 
 # Check for gtest
-AC_CHECK_LIB([gtest], [main], [], [AC_MSG_ERROR([gtest library is missing])])
+AC_CHECK_HEADERS([gtest/gtest.h], [], [AC_MSG_ERROR([gtest library is missing])])
 
 # Check for glog
 PKG_CHECK_MODULES([GLOG], [libglog], [], [AC_MSG_ERROR([glog library is missing])])

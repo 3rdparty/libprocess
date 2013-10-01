@@ -70,6 +70,7 @@ tests_LDADD =				\
   -lpthread				\
   -lprocess				\
   -lglog				\
+  -lgtest				\
   -lhttp_parser				\
   -lev
 

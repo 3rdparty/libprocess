@@ -7,13 +7,14 @@
 
 #include <string>
 
-#include <process/future.hpp>
-#include <process/gmock.hpp>
-#include <process/gtest.hpp>
-#include <process/http.hpp>
-#include <process/io.hpp>
+#include <libprocess/future.hpp>
+#include <libprocess/gmock.hpp>
+#include <libprocess/gtest.hpp>
+#include <libprocess/http.hpp>
+#include <libprocess/io.hpp>
 
 #include <stout/gtest.hpp>
+#include <stout/none.hpp>
 #include <stout/nothing.hpp>
 #include <stout/os.hpp>
 
@@ -32,8 +33,8 @@ class HttpProcess : public Process<HttpProcess>
 public:
   HttpProcess()
   {
-    route("/body", &HttpProcess::body);
-    route("/pipe", &HttpProcess::pipe);
+    route("/body", None(), &HttpProcess::body);
+    route("/pipe", None(), &HttpProcess::pipe);
   }
 
   MOCK_METHOD1(body, Future<http::Response>(const http::Request&));
@@ -41,7 +42,7 @@ public:
 };
 
 
-TEST(HTTP, Endpoints)
+TEST(HTTP, DISABLED_Endpoints)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 

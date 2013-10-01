@@ -1,0 +1,15 @@
+##################################
+# Pkg-Config file for libprocess #
+##################################
+
+Name: libprocess
+Description: Library that provides an actor style message-passing programming model
+URL: https://github.com/3rdparty/libprocess
+Version: @VERSION@
+
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+includedir=@includedir@
+libdir=@libdir@
+
+Cflags: -I${includedir}/libprocess

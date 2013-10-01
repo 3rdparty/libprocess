@@ -43,10 +43,7 @@ AS_IF([test "x${ac_cv_env_CXXFLAGS_set}" = "x"], [CXXFLAGS="-g"])
 CONFIGURE_ARGS="$ac_configure_args"
 AC_SUBST(CONFIGURE_ARGS)
 
-AC_CONFIG_SUBDIRS([3rdparty/stout])
-
-AC_CONFIG_FILES([Makefile])
-AC_CONFIG_FILES([3rdparty/Makefile])
+AC_CONFIG_FILES([Makefile include/Makefile libprocess.pc])
 
 AC_ARG_ENABLE([install],
               AS_HELP_STRING([--enable-install],
@@ -72,7 +69,7 @@ AC_ARG_WITH([zlib],
 # Do some OS specific setup.
 case "${target_os}" in
   linux*)
-    LIBS="$LIBS -lrt" # For clock_gettime() in stout/stopwatch.hpp.
+    #LIBS="$LIBS -lrt" # For clock_gettime() in stout/stopwatch.hpp.
     OS_NAME=linux # Used below for OS_LINUX.
     ;;
   *)
@@ -107,6 +104,29 @@ if test "x$with_zlib" = "xyes"; then
   -------------------------------------------------------------------
   ])])
 fi
+
+# Check for libev
+PKG_CHECK_MODULES([LIBEV], [libev], [], [AC_MSG_ERROR([libev library is missing])])
+
+# Check for boost
+AC_LANG_PUSH([C++])
+AC_CHECK_HEADERS([boost/foreach.hpp], [], [AC_MSG_ERROR(Boost libraries is missing)])
+AC_LANG_POP([C++])
+
+# Check for protobuf
+PKG_CHECK_MODULES([PROTOBUF], [protobuf], [], [AC_MSG_ERROR([protobuf library is missing])])
+
+# Check for gtest
+AC_CHECK_HEADERS([gtest/gtest.h], [], [AC_MSG_ERROR([gtest library is missing])])
+
+# Check for glog
+PKG_CHECK_MODULES([GLOG], [libglog], [], [AC_MSG_ERROR([glog library is missing])])
+
+# Check for stout
+PKG_CHECK_MODULES([STOUT], [stout], [], [AC_MSG_ERROR([stout library is missing])])
+
+# Check for gmock
+PKG_CHECK_MODULES([GMOCK], [gmock], [], [AC_MSG_ERROR([gmock is missing])])
 
 AM_CONDITIONAL([HAS_GPERFTOOLS], [test "x$gperftools" = "xyes"])
 

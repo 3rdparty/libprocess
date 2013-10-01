@@ -2,9 +2,9 @@
 
 #include <string>
 
-#include <process/future.hpp>
-#include <process/gtest.hpp>
-#include <process/io.hpp>
+#include <libprocess/future.hpp>
+#include <libprocess/gtest.hpp>
+#include <libprocess/io.hpp>
 
 #include <stout/gtest.hpp>
 #include <stout/os.hpp>
@@ -159,4 +159,6 @@ TEST(IO, BufferedRead)
   AWAIT_EXPECT_EQ(data, future);
 
   close(pipes[0]);
+
+  ASSERT_SOME(os::rm("file"));
 }

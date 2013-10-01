@@ -12,8 +12,8 @@
 
 #include <boost/unordered_map.hpp>
 
-#include <process/pid.hpp>
-#include <process/process.hpp>
+#include <libprocess/pid.hpp>
+#include <libprocess/process.hpp>
 
 #include "config.hpp"
 

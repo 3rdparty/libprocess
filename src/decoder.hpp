@@ -7,8 +7,8 @@
 #include <string>
 #include <vector>
 
-#include <process/http.hpp>
-#include <process/socket.hpp>
+#include <libprocess/http.hpp>
+#include <libprocess/socket.hpp>
 
 #include <stout/foreach.hpp>
 #include <stout/gzip.hpp>
@@ -28,14 +28,17 @@ public:
     settings.on_message_begin = &DataDecoder::on_message_begin;
     settings.on_header_field = &DataDecoder::on_header_field;
     settings.on_header_value = &DataDecoder::on_header_value;
-    settings.on_path = &DataDecoder::on_path;
     settings.on_url = &DataDecoder::on_url;
-    settings.on_fragment = &DataDecoder::on_fragment;
-    settings.on_query_string = &DataDecoder::on_query_string;
     settings.on_body = &DataDecoder::on_body;
     settings.on_headers_complete = &DataDecoder::on_headers_complete;
     settings.on_message_complete = &DataDecoder::on_message_complete;
 
+#if !(HTTP_PARSER_VERSION_MAJOR >=2) 
+    settings.on_path = &DataDecoder::on_path;
+    settings.on_fragment = &DataDecoder::on_fragment;
+    settings.on_query_string = &DataDecoder::on_query_string;
+#endif    
+    
     http_parser_init(&parser, HTTP_REQUEST);
 
     parser.data = this;
@@ -163,19 +166,37 @@ private:
     return 0;
   }
 
-  static int on_path(http_parser* p, const char* data, size_t length)
-  {
-    DataDecoder* decoder = (DataDecoder*) p->data;
-    assert(decoder->request != NULL);
-    decoder->request->path.append(data, length);
-    return 0;
-  }
-
   static int on_url(http_parser* p, const char* data, size_t length)
   {
     DataDecoder* decoder = (DataDecoder*) p->data;
     assert(decoder->request != NULL);
     decoder->request->url.append(data, length);
+    int ret = 0;
+    
+#if (HTTP_PARSER_VERSION_MAJOR >=2) 
+    // reworked parsing for version 2.0 &> 
+    http_parser_url tUrlData;
+    ret = http_parser_parse_url(data, length, 0, &tUrlData);
+     
+    if (tUrlData.field_set & (1<<UF_PATH))
+        decoder->request->path.append(data+tUrlData.field_data[UF_PATH].off, tUrlData.field_data[UF_PATH].len);
+    
+    if (tUrlData.field_set & (1<<UF_FRAGMENT))
+        decoder->request->fragment.append(data+tUrlData.field_data[UF_FRAGMENT].off, tUrlData.field_data[UF_FRAGMENT].len);
+    
+    if (tUrlData.field_set & (1<<UF_QUERY))
+        decoder->query.append(data+tUrlData.field_data[UF_QUERY].off, tUrlData.field_data[UF_QUERY].len);
+#endif
+    
+    return ret;
+  }
+
+#if !(HTTP_PARSER_VERSION_MAJOR >=2) 
+  static int on_path(http_parser* p, const char* data, size_t length)
+  { 
+    DataDecoder* decoder = (DataDecoder*) p->data;
+    assert(decoder->request != NULL);
+    decoder->request->path.append(data, length);
     return 0;
   }
 
@@ -194,6 +215,7 @@ private:
     decoder->request->fragment.append(data, length);
     return 0;
   }
+#endif
 
   static int on_body(http_parser* p, const char* data, size_t length)
   {
@@ -234,14 +256,17 @@ public:
     settings.on_message_begin = &ResponseDecoder::on_message_begin;
     settings.on_header_field = &ResponseDecoder::on_header_field;
     settings.on_header_value = &ResponseDecoder::on_header_value;
-    settings.on_path = &ResponseDecoder::on_path;
-    settings.on_url = &ResponseDecoder::on_url;
-    settings.on_fragment = &ResponseDecoder::on_fragment;
-    settings.on_query_string = &ResponseDecoder::on_query_string;
+    settings.on_url = &ResponseDecoder::on_url;    
     settings.on_body = &ResponseDecoder::on_body;
     settings.on_headers_complete = &ResponseDecoder::on_headers_complete;
     settings.on_message_complete = &ResponseDecoder::on_message_complete;
 
+#if !(HTTP_PARSER_VERSION_MAJOR >=2) 
+    settings.on_path = &ResponseDecoder::on_path;
+    settings.on_fragment = &ResponseDecoder::on_fragment;
+    settings.on_query_string = &ResponseDecoder::on_query_string;
+#endif
+    
     http_parser_init(&parser, HTTP_RESPONSE);
 
     parser.data = this;

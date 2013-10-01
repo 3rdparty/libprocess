@@ -1,11 +1,11 @@
 #include <iostream>
 #include <sstream>
 
-#include <process/defer.hpp>
-#include <process/dispatch.hpp>
-#include <process/future.hpp>
-#include <process/http.hpp>
-#include <process/process.hpp>
+#include <libprocess/defer.hpp>
+#include <libprocess/dispatch.hpp>
+#include <libprocess/future.hpp>
+#include <libprocess/http.hpp>
+#include <libprocess/process.hpp>
 
 using namespace process;
 

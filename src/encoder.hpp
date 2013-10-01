@@ -4,8 +4,8 @@
 #include <map>
 #include <sstream>
 
-#include <process/http.hpp>
-#include <process/process.hpp>
+#include <libprocess/http.hpp>
+#include <libprocess/process.hpp>
 
 #include <stout/foreach.hpp>
 #include <stout/gzip.hpp>

@@ -1,30 +1,12 @@
-# Makefile for libprocess. Note that 3rdparty needs to be built
-# first (see 3rdparty/Makefile.am).
+# Makefile for libprocess. 
 
 ACLOCAL_AMFLAGS = -I m4
 
 AUTOMAKE_OPTIONS = foreign
 
-SUBDIRS = 3rdparty .
+SUBDIRS = include
 
-include 3rdparty/versions.am
-
-STOUT = 3rdparty/stout
-BOOST = 3rdparty/boost-$(BOOST_VERSION)
-GLOG = 3rdparty/glog-$(GLOG_VERSION)
-GMOCK = 3rdparty/gmock-$(GMOCK_VERSION)
-GPERFTOOLS = 3rdparty/gperftools-$(GPERFTOOLS_VERSION)
-GTEST = $(GMOCK)/gtest
-RY_HTTP_PARSER = 3rdparty/ry-http-parser-$(RY_HTTP_PARSER_VERSION)
-LIBEV = 3rdparty/libev-$(LIBEV_VERSION)
-
-
-# Library. It is not installable presently because most people link
-# the libprocess statically into their resulting library or binary and
-# don't want any parts of libprocess to get installed (which happens
-# even if you attempt to do conditional installation via configure
-# arguments, see configure.ac).
-noinst_LTLIBRARIES = libprocess.la
+lib_LTLIBRARIES = libprocess.la
 
 libprocess_la_SOURCES =		\
   src/config.hpp		\
@@ -39,6 +21,7 @@ libprocess_la_SOURCES =		\
 
 libprocess_la_CPPFLAGS =		\
   -I$(srcdir)/include			\
+  -I/usr/include/libev			\
   -I$(srcdir)/$(STOUT)/include		\
   -I$(BOOST)				\
   -I$(GLOG)/src				\
@@ -46,50 +29,21 @@ libprocess_la_CPPFLAGS =		\
   -I$(RY_HTTP_PARSER)			\
   $(AM_CPPFLAGS)
 
-libprocess_la_LIBADD =			\
-  $(GLOG)/libglog.la			\
-  3rdparty/libry_http_parser.la	\
-  $(LIBEV)/libev.la
+ libprocess_la_LIBADD =			\
+  -lglog				\
+  -lhttp_parser				\
+  -lev
 
+ libprocess_la_LDFLAGS = -version-info 0:0:0
+ 
+ pkgconfigdir = $(libdir)/pkgconfig
+
+ pkgconfig_DATA = libprocess.pc
+  
 if HAS_GPERFTOOLS
 libprocess_la_CPPFLAGS += -I$(GPERFTOOLS)/src
 libprocess_la_LIBADD += $(GPERFTOOLS)/libprofiler.la
 endif
-
-# Headers.
-libprocess_la_SOURCES +=					\
-  $(top_srcdir)/include/process/async.hpp			\
-  $(top_srcdir)/include/process/clock.hpp			\
-  $(top_srcdir)/include/process/collect.hpp			\
-  $(top_srcdir)/include/process/defer.hpp			\
-  $(top_srcdir)/include/process/deferred.hpp			\
-  $(top_srcdir)/include/process/delay.hpp			\
-  $(top_srcdir)/include/process/dispatch.hpp			\
-  $(top_srcdir)/include/process/event.hpp			\
-  $(top_srcdir)/include/process/executor.hpp			\
-  $(top_srcdir)/include/process/filter.hpp			\
-  $(top_srcdir)/include/process/future.hpp			\
-  $(top_srcdir)/include/process/gc.hpp				\
-  $(top_srcdir)/include/process/gmock.hpp			\
-  $(top_srcdir)/include/process/gtest.hpp			\
-  $(top_srcdir)/include/process/http.hpp			\
-  $(top_srcdir)/include/process/id.hpp				\
-  $(top_srcdir)/include/process/io.hpp				\
-  $(top_srcdir)/include/process/latch.hpp			\
-  $(top_srcdir)/include/process/logging.hpp			\
-  $(top_srcdir)/include/process/message.hpp			\
-  $(top_srcdir)/include/process/mime.hpp			\
-  $(top_srcdir)/include/process/once.hpp			\
-  $(top_srcdir)/include/process/pid.hpp				\
-  $(top_srcdir)/include/process/process.hpp			\
-  $(top_srcdir)/include/process/profiler.hpp			\
-  $(top_srcdir)/include/process/protobuf.hpp			\
-  $(top_srcdir)/include/process/run.hpp				\
-  $(top_srcdir)/include/process/socket.hpp			\
-  $(top_srcdir)/include/process/statistics.hpp			\
-  $(top_srcdir)/include/process/time.hpp			\
-  $(top_srcdir)/include/process/timeout.hpp			\
-  $(top_srcdir)/include/process/timer.hpp
 
 # Tests.
 check_PROGRAMS = tests
@@ -102,20 +56,23 @@ tests_SOURCES =							\
   src/tests/main.cpp						\
   src/tests/process_tests.cpp					\
   src/tests/statistics_tests.cpp				\
-  src/tests/time_tests.cpp
+  src/tests/time_tests.cpp 					\
+  /usr/src/gmock/gmock-all.cc
 
 tests_CPPFLAGS =			\
   -I$(top_srcdir)/src			\
+  -I/usr/src/gmock			\
   -I$(GTEST)/include			\
   -I$(GMOCK)/include			\
   $(libprocess_la_CPPFLAGS)
 
 tests_LDADD =				\
-  third_party/libgmock.la		\
-  libprocess.la				\
-  $(GLOG)/libglog.la			\
-  third_party/libry_http_parser.la	\
-  $(LIBEV)/libev.la
+  -lpthread				\
+  -lprocess				\
+  -lglog				\
+  -lgtest				\
+  -lhttp_parser				\
+  -lev
 
 TESTS = tests
 

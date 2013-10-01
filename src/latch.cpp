@@ -1,6 +1,6 @@
-#include <process/id.hpp>
-#include <process/latch.hpp>
-#include <process/process.hpp>
+#include <libprocess/id.hpp>
+#include <libprocess/latch.hpp>
+#include <libprocess/process.hpp>
 
 #include <stout/duration.hpp>
 

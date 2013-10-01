@@ -8,30 +8,36 @@
 #include <string>
 #include <sstream>
 
-#include <process/async.hpp>
-#include <process/collect.hpp>
-#include <process/clock.hpp>
-#include <process/defer.hpp>
-#include <process/delay.hpp>
-#include <process/dispatch.hpp>
-#include <process/executor.hpp>
-#include <process/filter.hpp>
-#include <process/future.hpp>
-#include <process/gc.hpp>
-#include <process/gmock.hpp>
-#include <process/gtest.hpp>
-#include <process/process.hpp>
-#include <process/run.hpp>
-#include <process/time.hpp>
+#include <libprocess/async.hpp>
+#include <libprocess/collect.hpp>
+#include <libprocess/clock.hpp>
+#include <libprocess/defer.hpp>
+#include <libprocess/delay.hpp>
+#include <libprocess/dispatch.hpp>
+#include <libprocess/executor.hpp>
+#include <libprocess/filter.hpp>
+#include <libprocess/future.hpp>
+#include <libprocess/gc.hpp>
+#include <libprocess/gmock.hpp>
+#include <libprocess/gtest.hpp>
+#include <libprocess/limiter.hpp>
+#include <libprocess/process.hpp>
+#include <libprocess/run.hpp>
+#include <libprocess/time.hpp>
 
 #include <stout/duration.hpp>
+#include <stout/gtest.hpp>
 #include <stout/nothing.hpp>
 #include <stout/os.hpp>
 #include <stout/stringify.hpp>
+#include <stout/stopwatch.hpp>
 
 #include "encoder.hpp"
 
 using namespace process;
+using namespace process::http;
+
+using std::string;
 
 using testing::_;
 using testing::Assign;
@@ -99,7 +105,7 @@ TEST(Process, onAny)
 }
 
 
-Future<std::string> itoa1(int* const& i)
+Future<string> itoa1(int* const& i)
 {
   std::ostringstream out;
   out << *i;
@@ -107,7 +113,7 @@ Future<std::string> itoa1(int* const& i)
 }
 
 
-std::string itoa2(int* const& i)
+string itoa2(int* const& i)
 {
   std::ostringstream out;
   out << *i;
@@ -123,7 +129,7 @@ TEST(Process, then)
 
   promise.set(&i);
 
-  Future<std::string> future = promise.future()
+  Future<string> future = promise.future()
     .then(std::tr1::bind(&itoa1, std::tr1::placeholders::_1));
 
   ASSERT_TRUE(future.isReady());
@@ -155,13 +161,13 @@ Future<bool> pendingFuture(Future<bool>* future)
 }
 
 
-Future<std::string> second(const bool& b)
+Future<string> second(const bool& b)
 {
-  return b ? std::string("true") : std::string("false");
+  return b ? string("true") : string("false");
 }
 
 
-Future<std::string> third(const std::string& s)
+Future<string> third(const string& s)
 {
   return s;
 }
@@ -171,7 +177,7 @@ TEST(Process, chain)
 {
   Promise<int*> promise;
 
-  Future<std::string> s = readyFuture()
+  Future<string> s = readyFuture()
     .then(std::tr1::bind(&second, std::tr1::placeholders::_1))
     .then(std::tr1::bind(&third, std::tr1::placeholders::_1));
 
@@ -358,25 +364,25 @@ TEST(Process, defer1)
 class DeferProcess : public Process<DeferProcess>
 {
 public:
-  Future<std::string> func1(const Future<int>& f)
+  Future<string> func1(const Future<int>& f)
   {
     return f.then(defer(self(), &Self::_func1, std::tr1::placeholders::_1));
   }
 
-  Future<std::string> func2(const Future<int>& f)
+  Future<string> func2(const Future<int>& f)
   {
     return f.then(defer(self(), &Self::_func2));
   }
 
 private:
-  Future<std::string> _func1(int i)
+  Future<string> _func1(int i)
   {
     return stringify(i);
   }
 
-  Future<std::string> _func2()
+  Future<string> _func2()
   {
-    return std::string("42");
+    return string("42");
   }
 };
 
@@ -389,7 +395,7 @@ TEST(Process, defer2)
 
   PID<DeferProcess> pid = spawn(process);
 
-  Future<std::string> f = dispatch(pid, &DeferProcess::func1, 41);
+  Future<string> f = dispatch(pid, &DeferProcess::func1, 41);
 
   f.await();
 
@@ -451,7 +457,7 @@ public:
     install("func", &HandlersProcess::func);
   }
 
-  MOCK_METHOD2(func, void(const UPID&, const std::string&));
+  MOCK_METHOD2(func, void(const UPID&, const string&));
 };
 
 
@@ -518,7 +524,7 @@ TEST(Process, action)
 
   ASSERT_FALSE(!pid);
 
-  Future<std::string> future1;
+  Future<string> future1;
   Future<Nothing> future2;
   EXPECT_CALL(process, func(_, _))
     .WillOnce(FutureArg<1>(&future1))
@@ -627,7 +633,7 @@ public:
     install("func", &DelegateeProcess::func);
   }
 
-  MOCK_METHOD2(func, void(const UPID&, const std::string&));
+  MOCK_METHOD2(func, void(const UPID&, const string&));
 };
 
 
@@ -832,6 +838,12 @@ TEST(Process, collect)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
+  // First ensure an empty list functions correctly.
+  std::list<Future<int> > empty;
+  Future<std::list<int> > future = collect(empty);
+  AWAIT_ASSERT_READY(future);
+  EXPECT_TRUE(future.get().empty());
+
   Promise<int> promise1;
   Promise<int> promise2;
   Promise<int> promise3;
@@ -843,15 +855,15 @@ TEST(Process, collect)
   futures.push_back(promise3.future());
   futures.push_back(promise4.future());
 
-  promise1.set(1);
-  promise2.set(2);
-  promise3.set(3);
+  // Set them out-of-order.
   promise4.set(4);
+  promise2.set(2);
+  promise1.set(1);
+  promise3.set(3);
 
-  Future<std::list<int> > future = collect(futures);
+  future = collect(futures);
 
-  EXPECT_TRUE(future.await());
-  EXPECT_TRUE(future.isReady());
+  AWAIT_ASSERT_READY(future);
 
   std::list<int> values;
   values.push_back(1);
@@ -859,7 +871,52 @@ TEST(Process, collect)
   values.push_back(3);
   values.push_back(4);
 
+  // We expect them to be returned in the same order as the
+  // future list that was passed in.
   EXPECT_EQ(values, future.get());
+}
+
+
+TEST(Process, await)
+{
+  ASSERT_TRUE(GTEST_IS_THREADSAFE);
+
+  // First ensure an empty list functions correctly.
+  std::list<Future<int> > empty;
+  Future<std::list<Future<int> > > future = await(empty);
+  AWAIT_ASSERT_READY(future);
+  EXPECT_TRUE(future.get().empty());
+
+  Promise<int> promise1;
+  Promise<int> promise2;
+  Promise<int> promise3;
+  Promise<int> promise4;
+
+  std::list<Future<int> > futures;
+  futures.push_back(promise1.future());
+  futures.push_back(promise2.future());
+  futures.push_back(promise3.future());
+  futures.push_back(promise4.future());
+
+  // Set them out-of-order.
+  promise4.set(4);
+  promise2.set(2);
+  promise1.set(1);
+  promise3.set(3);
+
+  future = await(futures);
+
+  AWAIT_ASSERT_READY(future);
+
+  EXPECT_EQ(futures.size(), future.get().size());
+
+  // We expect them to be returned in the same order as the
+  // future list that was passed in.
+  int i = 1;
+  foreach (const Future<int>& result, future.get()) {
+    ASSERT_TRUE(result.isReady());
+    ASSERT_EQ(i++, result.get());
+  }
 }
 
 
@@ -970,7 +1027,7 @@ class EventReceiver
 {
 public:
   MOCK_METHOD1(event1, void(int));
-  MOCK_METHOD1(event2, void(const std::string&));
+  MOCK_METHOD1(event2, void(const string&));
 };
 
 
@@ -998,7 +1055,7 @@ TEST(Process, executor)
 
   event1(42);
 
-  Deferred<void(const std::string&)> event2 =
+  Deferred<void(const string&)> event2 =
     executor.defer(std::tr1::bind(&EventReceiver::event2,
                                   &receiver,
                                   std::tr1::placeholders::_1));
@@ -1018,11 +1075,11 @@ public:
     install("handler", &RemoteProcess::handler);
   }
 
-  MOCK_METHOD2(handler, void(const UPID&, const std::string&));
+  MOCK_METHOD2(handler, void(const UPID&, const string&));
 };
 
 
-TEST(Process, remote)
+TEST(Process, DISABLED_remote)
 {
   ASSERT_TRUE(GTEST_IS_THREADSAFE);
 
@@ -1052,7 +1109,7 @@ TEST(Process, remote)
   message.from = UPID();
   message.to = process.self();
 
-  const std::string& data = MessageEncoder::encode(&message);
+  const string& data = MessageEncoder::encode(&message);
 
   ASSERT_EQ(data.size(), write(s, data.data(), data.size()));
 
@@ -1117,4 +1174,79 @@ TEST(Process, async)
 
   // Non-void function that returns a future.
   EXPECT_EQ("42", async(&itoa1, &i).get().get());
+}
+
+
+TEST(Process, limiter)
+{
+  ASSERT_TRUE(GTEST_IS_THREADSAFE);
+
+  int permits = 2;
+  Duration duration = Milliseconds(5);
+
+  RateLimiter limiter(permits, duration);
+  Milliseconds interval = duration / permits;
+
+  Stopwatch stopwatch;
+  stopwatch.start();
+
+  Future<Nothing> acquire1 = limiter.acquire();
+  Future<Nothing> acquire2 = limiter.acquire();
+  Future<Nothing> acquire3 = limiter.acquire();
+
+  AWAIT_READY(acquire1);
+
+  AWAIT_READY(acquire2);
+  ASSERT_LE(interval, stopwatch.elapsed());
+
+  AWAIT_READY(acquire3);
+  ASSERT_LE(interval * 2, stopwatch.elapsed());
+}
+
+
+class FileServer : public Process<FileServer>
+{
+public:
+  FileServer(const string& _path)
+    : path(_path) {}
+
+  virtual void initialize()
+  {
+    provide("", path);
+  }
+
+  const string path;
+};
+
+
+TEST(Process, DISABLED_provide)
+{
+  const Try<string>& mkdtemp = os::mkdtemp();
+  ASSERT_SOME(mkdtemp);
+
+  const string LOREM_IPSUM =
+      "Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do "
+      "eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad "
+      "minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip "
+      "ex ea commodo consequat. Duis aute irure dolor in reprehenderit in "
+      "voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur "
+      "sint occaecat cupidatat non proident, sunt in culpa qui officia "
+      "deserunt mollit anim id est laborum.";
+
+  const string path = path::join(mkdtemp.get(), "lorem.txt");
+  ASSERT_SOME(os::write(path, LOREM_IPSUM));
+
+  FileServer server(path);
+  PID<FileServer> pid = spawn(server);
+
+  Future<Response> response = http::get(pid);
+
+  AWAIT_READY(response);
+
+  ASSERT_EQ(LOREM_IPSUM, response.get().body);
+
+  terminate(server);
+  wait(server);
+
+  ASSERT_SOME(os::rmdir(path));
 }

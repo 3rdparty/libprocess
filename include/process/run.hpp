@@ -1,10 +1,24 @@
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License
+
 #ifndef __PROCESS_RUN_HPP__
 #define __PROCESS_RUN_HPP__
 
-#include <tr1/memory> // TODO(benh): Replace shared_ptr with unique_ptr.
+#include <memory> // TODO(benh): Replace shared_ptr with unique_ptr.
 
+#include <process/id.hpp>
 #include <process/process.hpp>
 
+#include <stout/lambda.hpp>
 #include <stout/preprocessor.hpp>
 
 namespace process {
@@ -12,38 +26,39 @@ namespace process {
 namespace internal {
 
 template <typename R>
-class ThunkProcess : public Process<ThunkProcess<R> >
+class ThunkProcess : public Process<ThunkProcess<R>>
 {
 public:
-  ThunkProcess(std::tr1::shared_ptr<std::tr1::function<R(void)> > _thunk,
-               std::tr1::shared_ptr<Promise<R> > _promise)
-    : thunk(_thunk),
+  ThunkProcess(std::shared_ptr<lambda::function<R()>> _thunk,
+               std::shared_ptr<Promise<R>> _promise)
+    : ProcessBase(ID::generate("__thunk__")),
+      thunk(_thunk),
       promise(_promise) {}
 
-  virtual ~ThunkProcess() {}
+  ~ThunkProcess() override {}
 
 protected:
-  virtual void serve(const Event& event)
+  void serve(Event&& event) override
   {
     promise->set((*thunk)());
   }
 
 private:
-  std::tr1::shared_ptr<std::tr1::function<R(void)> > thunk;
-  std::tr1::shared_ptr<Promise<R> > promise;
+  std::shared_ptr<lambda::function<R()>> thunk;
+  std::shared_ptr<Promise<R>> promise;
 };
 
 } // namespace internal {
 
 
 template <typename R>
-Future<R> run(R (*method)(void))
+Future<R> run(R (*method)())
 {
-  std::tr1::shared_ptr<std::tr1::function<R(void)> > thunk(
-      new std::tr1::function<R(void)>(
-          std::tr1::bind(method)));
+  std::shared_ptr<lambda::function<R()>> thunk(
+      new lambda::function<R()>(
+          lambda::bind(method)));
 
-  std::tr1::shared_ptr<Promise<R> > promise(new Promise<R>());
+  std::shared_ptr<Promise<R>> promise(new Promise<R>());
   Future<R> future = promise->future();
 
   terminate(spawn(new internal::ThunkProcess<R>(thunk, promise), true));
@@ -60,11 +75,11 @@ Future<R> run(R (*method)(void))
       R (*method)(ENUM_PARAMS(N, P)),                                   \
       ENUM_BINARY_PARAMS(N, A, a))                                      \
   {                                                                     \
-    std::tr1::shared_ptr<std::tr1::function<R(void)> > thunk(           \
-        new std::tr1::function<R(void)>(                                \
-            std::tr1::bind(method, ENUM_PARAMS(N, a))));                \
+    std::shared_ptr<lambda::function<R()>> thunk(                       \
+        new lambda::function<R()>(                                      \
+            lambda::bind(method, ENUM_PARAMS(N, a))));                  \
                                                                         \
-    std::tr1::shared_ptr<Promise<R> > promise(new Promise<R>());        \
+    std::shared_ptr<Promise<R>> promise(new Promise<R>());              \
     Future<R> future = promise->future();                               \
                                                                         \
     terminate(spawn(new internal::ThunkProcess<R>(thunk, promise), true)); \
@@ -72,7 +87,7 @@ Future<R> run(R (*method)(void))
     return future;                                                      \
   }
 
-  REPEAT_FROM_TO(1, 11, TEMPLATE, _) // Args A0 -> A9.
+  REPEAT_FROM_TO(1, 13, TEMPLATE, _) // Args A0 -> A11.
 #undef TEMPLATE
 
 } // namespace process {

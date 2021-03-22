@@ -1,184 +1,100 @@
-#include <gmock/gmock.h>
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License
 
-#include <map>
+#include <gtest/gtest.h>
+
+#include <list>
 
 #include <process/clock.hpp>
-#include <process/future.hpp>
-#include <process/gtest.hpp>
 #include <process/statistics.hpp>
-#include <process/time.hpp>
 
 #include <stout/duration.hpp>
+#include <stout/gtest.hpp>
 
-using namespace process;
+using process::Clock;
+using process::Statistics;
+using process::Time;
+using process::TimeSeries;
 
-using std::map;
+using std::list;
 
-
-TEST(Statistics, set)
+TEST(StatisticsTest, Empty)
 {
-  Statistics statistics(Days(1));
+  TimeSeries<double> timeseries;
 
-  // Set one using Clock::now() implicitly.
-  statistics.set("test", "statistic", 3.0);
-
-  // Set one using Clock::now() explicitly.
-  Time now = Clock::now();
-  statistics.set("test", "statistic", 4.0, now);
-
-  Future<map<Time, double> > values =
-    statistics.timeseries("test", "statistic");
-
-  AWAIT_ASSERT_READY(values);
-
-  EXPECT_EQ(2, values.get().size());
-
-  EXPECT_GE(Clock::now(), values.get().begin()->first);
-  EXPECT_DOUBLE_EQ(3.0, values.get().begin()->second);
-
-  EXPECT_EQ(1, values.get().count(now));
-  EXPECT_DOUBLE_EQ(4.0, values.get()[now]);
+  EXPECT_NONE(Statistics<double>::from(timeseries));
 }
 
 
-TEST(Statistics, truncate)
+TEST(StatisticsTest, Single)
 {
-  Clock::pause();
+  TimeSeries<double> timeseries;
 
-  Statistics statistics(Days(1));
+  timeseries.set(0);
 
-  statistics.set("test", "statistic", 3.0);
-
-  Future<map<Time, double> > values =
-    statistics.timeseries("test", "statistic");
-
-  AWAIT_ASSERT_READY(values);
-
-  EXPECT_EQ(1, values.get().size());
-  EXPECT_GE(Clock::now(), values.get().begin()->first);
-  EXPECT_DOUBLE_EQ(3.0, values.get().begin()->second);
-
-  Clock::advance(Days(1) + Seconds(1));
-  Clock::settle();
-
-  statistics.increment("test", "statistic");
-
-  values = statistics.timeseries("test", "statistic");
-
-  AWAIT_ASSERT_READY(values);
-
-  EXPECT_EQ(1, values.get().size());
-  EXPECT_GE(Clock::now(), values.get().begin()->first);
-  EXPECT_DOUBLE_EQ(4.0, values.get().begin()->second);
-
-  Clock::resume();
+  EXPECT_NONE(Statistics<double>::from(timeseries));
 }
 
 
-TEST(Statistics, meter) {
-  Statistics statistics(Days(1));
-
-  // Set up a meter, and ensure it captures the expected time rate.
-  Future<Try<Nothing> > meter =
-    statistics.meter("test", "statistic", new meters::TimeRate("metered"));
-
-  AWAIT_ASSERT_READY(meter);
-
-  ASSERT_TRUE(meter.get().isSome());
+TEST(StatisticsTest, StatisticsFromTimeSeries)
+{
+  // Create a distribution of 10 values from -5 to 4.
+  TimeSeries<double> timeseries;
 
   Time now = Clock::now();
-  statistics.set("test", "statistic", 1.0, now);
-  statistics.set("test", "statistic", 2.0, Time(now + Seconds(1)));
-  statistics.set("test", "statistic", 4.0, Time(now + Seconds(2)));
 
-  // Check the raw statistic values.
-  Future<map<Time, double> > values =
-    statistics.timeseries("test", "statistic");
+  for (int i = -5; i <= 5; ++i) {
+    now += Seconds(1);
+    timeseries.set(i, now);
+  }
 
-  AWAIT_ASSERT_READY(values);
+  Option<Statistics<double>> statistics = Statistics<double>::from(timeseries);
 
-  EXPECT_EQ(3, values.get().size());
-  EXPECT_EQ(1, values.get().count(now));
-  EXPECT_EQ(1, values.get().count(Time(now + Seconds(1))));
-  EXPECT_EQ(1, values.get().count(Time(now + Seconds(2))));
+  EXPECT_SOME(statistics);
 
-  EXPECT_EQ(1.0, values.get()[now]);
-  EXPECT_EQ(2.0, values.get()[Time(now + Seconds(1))]);
-  EXPECT_EQ(4.0, values.get()[Time(now + Seconds(2))]);
+  EXPECT_EQ(11u, statistics->count);
 
-  // Now check the metered values.
-  values = statistics.timeseries("test", "metered");
+  EXPECT_DOUBLE_EQ(-5.0, statistics->min);
+  EXPECT_DOUBLE_EQ(5.0, statistics->max);
 
-  AWAIT_ASSERT_READY(values);
-
-  EXPECT_EQ(2, values.get().size());
-  EXPECT_EQ(1, values.get().count(Time(now + Seconds(1))));
-  EXPECT_EQ(1, values.get().count(Time(now + Seconds(2))));
-
-  EXPECT_EQ(0., values.get()[now]);
-  EXPECT_EQ(1.0, values.get()[Time(now + Seconds(1))]); // 100%.
-  EXPECT_EQ(2.0, values.get()[Time(now + Seconds(2))]); // 200%.
+  EXPECT_DOUBLE_EQ(-2.5, statistics->p25);
+  EXPECT_DOUBLE_EQ(0.0, statistics->p50);
+  EXPECT_DOUBLE_EQ(2.5, statistics->p75);
+  EXPECT_DOUBLE_EQ(4.0, statistics->p90);
+  EXPECT_DOUBLE_EQ(4.5, statistics->p95);
+  EXPECT_DOUBLE_EQ(4.9, statistics->p99);
+  EXPECT_DOUBLE_EQ(4.99, statistics->p999);
+  EXPECT_DOUBLE_EQ(4.999, statistics->p9999);
 }
 
 
-TEST(Statistics, archive)
+TEST(StatisticsTest, StatisticsFromDurationList)
 {
-  Clock::pause();
+  list<Duration> values{
+    Seconds(0), Seconds(10), Seconds(20), Seconds(30), Seconds(40), Seconds(50),
+    Seconds(60), Seconds(70), Seconds(80), Seconds(90), Seconds(100)};
 
-  Statistics statistics(Seconds(10));
+  Option<Statistics<Duration>> statistics = Statistics<Duration>::from(
+      values.cbegin(), values.cend());
 
-  // Create a meter and a statistic for archival.
-  // Set up a meter, and ensure it captures the expected time rate.
-  Future<Try<Nothing> > meter =
-    statistics.meter("test", "statistic", new meters::TimeRate("metered"));
+  EXPECT_SOME(statistics);
 
-  AWAIT_ASSERT_READY(meter);
+  EXPECT_EQ(11u, statistics->count);
 
-  ASSERT_TRUE(meter.get().isSome());
+  EXPECT_EQ(Seconds(0), statistics->min);
+  EXPECT_EQ(Seconds(100), statistics->max);
 
-  Time now = Clock::now();
-  statistics.set("test", "statistic", 1.0, now);
-  statistics.set("test", "statistic", 2.0, Time(now + Seconds(1)));
-
-  // Archive and ensure the following:
-  //   1. The statistic will no longer be part of the snapshot.
-  //   2. Any meters associated with this statistic will be removed.
-  //   3. However, the time series will be retained until the window expiration.
-  statistics.archive("test", "statistic");
-
-  // TODO(bmahler): Wait for JSON parsing to verify number 1.
-
-  // Ensure the raw time series is present.
-  Future<map<Time, double> > values =
-    statistics.timeseries("test", "statistic");
-  AWAIT_ASSERT_READY(values);
-  EXPECT_FALSE(values.get().empty());
-
-  // Ensure the metered timeseries is present.
-  values = statistics.timeseries("test", "metered");
-  AWAIT_ASSERT_READY(values);
-  EXPECT_FALSE(values.get().empty());
-
-  // Expire the window and ensure the statistics were removed.
-  Clock::advance(STATISTICS_TRUNCATION_INTERVAL);
-  Clock::settle();
-
-  // Ensure the raw statistics are gone.
-  values = statistics.timeseries("test", "statistic");
-  AWAIT_ASSERT_READY(values);
-  EXPECT_TRUE(values.get().empty());
-
-  // Ensure the metered statistics are gone.
-  values = statistics.timeseries("test", "metered");
-  AWAIT_ASSERT_READY(values);
-  EXPECT_TRUE(values.get().empty());
-
-  // Reactivate the statistic, and make sure the meter is still missing.
-  statistics.set("test", "statistic", 1.0, now);
-
-  values = statistics.timeseries("test", "metered");
-  AWAIT_ASSERT_READY(values);
-  EXPECT_TRUE(values.get().empty());
-
-  Clock::resume();
+  EXPECT_EQ(Seconds(25), statistics->p25);
+  EXPECT_EQ(Seconds(50), statistics->p50);
+  EXPECT_EQ(Seconds(75), statistics->p75);
+  EXPECT_EQ(Seconds(90), statistics->p90);
 }

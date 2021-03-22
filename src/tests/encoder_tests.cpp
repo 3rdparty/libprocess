@@ -1,3 +1,15 @@
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License
+
 #include <gmock/gmock.h>
 
 #include <deque>
@@ -5,6 +17,7 @@
 #include <vector>
 
 #include <process/http.hpp>
+#include <process/owned.hpp>
 #include <process/socket.hpp>
 
 #include <stout/gtest.hpp>
@@ -12,45 +25,54 @@
 #include "encoder.hpp"
 #include "decoder.hpp"
 
-using namespace process;
-using namespace process::http;
+namespace http = process::http;
+
+using process::HttpResponseEncoder;
+using process::Owned;
+using process::ResponseDecoder;
 
 using std::deque;
 using std::string;
 using std::vector;
 
 
-TEST(Encoder, Response)
+TEST(EncoderTest, Response)
 {
-  Request request;
-  const OK& response("body");
+  http::Request request;
+  const http::OK response("body");
 
   // Encode the response.
-  const string& encoded = HttpResponseEncoder::encode(response, request);
+  const string encoded = HttpResponseEncoder::encode(response, request);
 
   // Now decode it back, and verify the encoding was correct.
   ResponseDecoder decoder;
-  deque<Response*> responses = decoder.decode(encoded.data(), encoded.length());
-  ASSERT_FALSE(decoder.failed());
-  ASSERT_EQ(1, responses.size());
+  deque<http::Response*> responses =
+    decoder.decode(encoded.data(), encoded.length());
 
-  Response* decoded = responses[0];
+  ASSERT_FALSE(decoder.failed());
+  ASSERT_EQ(1u, responses.size());
+
+  Owned<http::Response> decoded(responses[0]);
   EXPECT_EQ("200 OK", decoded->status);
   EXPECT_EQ("body", decoded->body);
 
-  // Encoding should have inserted the 'Date' and 'Content-Length' headers.
-  EXPECT_EQ(2, decoded->headers.size());
+  // Encoding should have inserted the 'Date', 'Content-Length' and
+  // 'Content-Type' headers.
+  EXPECT_EQ(3u, decoded->headers.size());
   EXPECT_TRUE(decoded->headers.contains("Date"));
   EXPECT_SOME_EQ(
       stringify(response.body.size()),
       decoded->headers.get("Content-Length"));
+  EXPECT_SOME_EQ(
+      "text/plain; charset=utf-8",
+      decoded->headers.get("Content-Type"));
 }
 
 
-TEST(Encoder, AcceptableEncodings)
+TEST(EncoderTest, AcceptableEncodings)
 {
   // Create requests that do not accept gzip encoding.
-  vector<Request> requests(7);
+  vector<http::Request> requests(10);
   requests[0].headers["Accept-Encoding"] = "gzip;q=0.0,*";
   requests[1].headers["Accept-Encoding"] = "compress";
   requests[2].headers["Accept-Encoding"] = "compress, gzip;q=0.0";
@@ -58,15 +80,18 @@ TEST(Encoder, AcceptableEncodings)
   requests[4].headers["Accept-Encoding"] = "*;q=0.0, compress";
   requests[5].headers["Accept-Encoding"] = "\n compress";
   requests[6].headers["Accept-Encoding"] = "compress,\tgzip;q=0.0";
+  requests[7].headers["Accept-Encoding"] = "gzipbug;q=0.1";
+  requests[8].headers["Accept-Encoding"] = "";
+  requests[9].headers["Accept-Encoding"] = ",";
 
-  foreach (const Request& request, requests) {
-    EXPECT_FALSE(request.accepts("gzip"))
+  foreach (const http::Request& request, requests) {
+    EXPECT_FALSE(request.acceptsEncoding("gzip"))
       << "Gzip encoding is unacceptable for 'Accept-Encoding: "
       << request.headers.get("Accept-Encoding").get() << "'";
   }
 
   // Create requests that accept gzip encoding.
-  vector<Request> gzipRequests(12);
+  vector<http::Request> gzipRequests(12);
 
   // Using q values.
   gzipRequests[0].headers["Accept-Encoding"] = "gzip;q=0.1,*";
@@ -84,8 +109,8 @@ TEST(Encoder, AcceptableEncodings)
   gzipRequests[10].headers["Accept-Encoding"] = "compress,\tgzip";
   gzipRequests[11].headers["Accept-Encoding"] = "gzip";
 
-  foreach (const Request& gzipRequest, gzipRequests) {
-    EXPECT_TRUE(gzipRequest.accepts("gzip"))
+  foreach (const http::Request& gzipRequest, gzipRequests) {
+    EXPECT_TRUE(gzipRequest.acceptsEncoding("gzip"))
       << "Gzip encoding is acceptable for 'Accept-Encoding: "
       << gzipRequest.headers.get("Accept-Encoding").get() << "'";
   }

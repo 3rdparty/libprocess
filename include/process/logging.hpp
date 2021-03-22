@@ -1,28 +1,34 @@
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License
+
 #ifndef __PROCESS_LOGGING_HPP__
 #define __PROCESS_LOGGING_HPP__
 
 #include <glog/logging.h>
 
-#include <process/delay.hpp>
 #include <process/future.hpp>
 #include <process/http.hpp>
 #include <process/process.hpp>
 #include <process/timeout.hpp>
-
-#include <stout/duration.hpp>
-#include <stout/numify.hpp>
-#include <stout/option.hpp>
-#include <stout/stringify.hpp>
-#include <stout/try.hpp>
 
 namespace process {
 
 class Logging : public Process<Logging>
 {
 public:
-  Logging()
+  Logging(Option<std::string> _authenticationRealm)
     : ProcessBase("logging"),
-      original(FLAGS_v)
+      original(FLAGS_v),
+      authenticationRealm(_authenticationRealm)
   {
     // Make sure all reads/writes can be done atomically (i.e., to
     // make sure VLOG(*) statements don't read partial writes).
@@ -31,66 +37,33 @@ public:
     CHECK(sizeof(FLAGS_v) == sizeof(int32_t));
   }
 
-  virtual ~Logging() {}
+  ~Logging() override {}
+
+  Future<Nothing> set_level(int level, const Duration& duration);
 
 protected:
-  virtual void initialize()
+  void initialize() override
   {
-    route("/toggle", &This::toggle);
+    route("/toggle", authenticationRealm, TOGGLE_HELP(), &This::toggle);
   }
 
 private:
-  Future<http::Response> toggle(const http::Request& request)
-  {
-    Option<std::string> level = request.query.get("level");
-    Option<std::string> duration = request.query.get("duration");
-
-    if (level.isNone() && duration.isNone()) {
-      return http::OK(stringify(FLAGS_v) + "\n");
-    }
-
-    if (level.isSome() && duration.isNone()) {
-      return http::BadRequest("Expecting 'duration=value' in query.\n");
-    } else if (level.isNone() && duration.isSome()) {
-      return http::BadRequest("Expecting 'level=value' in query.\n");
-    }
-
-    Try<int> v = numify<int>(level.get());
-
-    if (v.isError()) {
-      return http::BadRequest(v.error() + ".\n");
-    }
-
-    if (v.get() < 0) {
-      return http::BadRequest("Invalid level '" + stringify(v.get()) + "'.\n");
-    } else if (v.get() < original) {
-      return http::BadRequest("'" + stringify(v.get()) + "' < original level.\n");
-    }
-
-    Try<Duration> d = Duration::parse(duration.get());
-
-    if (d.isError()) {
-      return http::BadRequest(d.error() + ".\n");
-    }
-
-    // Set the logging level.
-    set(v.get());
-
-    // Start a revert timer (if necessary).
-    if (v.get() != original) {
-      timeout = d.get();
-      delay(timeout.remaining(), this, &This::revert);
-    }
-
-    return http::OK();
-  }
+  Future<http::Response> toggle(
+      const http::Request& request,
+      const Option<http::authentication::Principal>&);
 
   void set(int v)
   {
     if (FLAGS_v != v) {
       VLOG(FLAGS_v) << "Setting verbose logging level to " << v;
       FLAGS_v = v;
-      __sync_synchronize(); // Ensure 'FLAGS_v' visible in other threads.
+
+      // Ensure 'FLAGS_v' visible in other threads.
+#ifdef __WINDOWS__
+      MemoryBarrier();
+#else
+      __sync_synchronize();
+#endif // __WINDOWS__
     }
   }
 
@@ -101,9 +74,15 @@ private:
     }
   }
 
+  static const std::string TOGGLE_HELP();
+
   Timeout timeout;
 
   const int32_t original; // Original value of FLAGS_v.
+
+  // The authentication realm that the `/logging/toggle` endpoint will be
+  // installed into.
+  const Option<std::string> authenticationRealm;
 };
 
 } // namespace process {

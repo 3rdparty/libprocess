@@ -1,36 +1,44 @@
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License
+
 #ifndef __PROCESS_TIMER_HPP__
 #define __PROCESS_TIMER_HPP__
 
+#include <stdint.h>
 #include <stdlib.h> // For abort.
 
-#include <tr1/functional>
-
+#include <process/pid.hpp>
 #include <process/timeout.hpp>
 
 #include <stout/duration.hpp>
+#include <stout/lambda.hpp>
 
 namespace process {
 
-// Timer support!
+// Timer represents a delayed thunk, that can get created (scheduled)
+// and canceled using the Clock.
 
 class Timer
 {
 public:
   Timer() : id(0), pid(process::UPID()), thunk(&abort) {}
 
-  static Timer create(
-      const Duration& duration,
-      const std::tr1::function<void(void)>& thunk);
-
-  static bool cancel(const Timer& timer);
-
-  bool operator == (const Timer& that) const
+  bool operator==(const Timer& that) const
   {
     return id == that.id;
   }
 
   // Invokes this timer's thunk.
-  void operator () () const
+  void operator()() const
   {
     thunk();
   }
@@ -50,10 +58,12 @@ public:
   }
 
 private:
-  Timer(long _id,
+  friend class Clock;
+
+  Timer(uint64_t _id,
         const Timeout& _t,
         const process::UPID& _pid,
-        const std::tr1::function<void(void)>& _thunk)
+        const lambda::function<void()>& _thunk)
     : id(_id), t(_t), pid(_pid), thunk(_thunk)
   {}
 
@@ -65,10 +75,10 @@ private:
   // there is one). We don't store a pointer to the process because we
   // can't dereference it since it might no longer be valid. (Instead,
   // the PID can be used internally to check if the process is still
-  // valid and get a refernce to it.)
+  // valid and get a reference to it.)
   process::UPID pid;
 
-  std::tr1::function<void(void)> thunk;
+  lambda::function<void()> thunk;
 };
 
 } // namespace process {

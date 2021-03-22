@@ -1,103 +1,63 @@
-#ifndef GATE_H
-#define GATE_H
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License
 
-/* TODO(benh): Provide an implementation directly on-top-of futex's for Linux. */
-//#ifdef __linux__
-//#else
+#ifndef __GATE_HPP__
+#define __GATE_HPP__
 
+#include <condition_variable>
+#include <mutex>
+
+#include <stout/synchronized.hpp>
+
+namespace process {
+
+// A Gate abstracts the concept of something that can "only happen
+// once and every one else needs to queue up and wait until that thing
+// happens" ... kind of like a gate that can only ever open.
+//
+// NOTE: historically a gate could be opened and _closed_ allowing but
+// those semantics are no longer needed so they have been removed in
+// order to simplify the implementation.
+//
+// TODO(benh): Consider removing this entirely and using `Once` for
+// cleanup of a `ProcessBase` instead of a `Gate`.
 class Gate
 {
 public:
-  typedef intptr_t state_t;
-
-private:
-  int waiters;
-  state_t state;
-  pthread_mutex_t mutex;
-  pthread_cond_t cond;
-
-public:
-  Gate() : waiters(0), state(0)
+  // Opens the gate and notifies all the waiters.
+  void open()
   {
-    pthread_mutex_init(&mutex, NULL);
-    pthread_cond_init(&cond, NULL);
-  }
-
-  ~Gate()
-  {
-    pthread_cond_destroy(&cond);
-    pthread_mutex_destroy(&mutex);
-  }
-
-  void open(bool all = true)
-  {
-    pthread_mutex_lock(&mutex);
-    {
-      state++;
-      if (all) pthread_cond_broadcast(&cond);
-      else pthread_cond_signal(&cond);
+    synchronized (mutex) {
+      opened = true;
+      cond.notify_all();
     }
-    pthread_mutex_unlock(&mutex);
   }
 
+  // Blocks the current thread until the gate has been opened.
   void wait()
   {
-    pthread_mutex_lock(&mutex);
-    {
-      waiters++;
-      state_t old = state;
-      while (old == state)
-	pthread_cond_wait(&cond, &mutex);
-      waiters--;
-    }
-    pthread_mutex_unlock(&mutex);
-  }
-
-  state_t approach()
-  {
-    state_t old;
-    pthread_mutex_lock(&mutex);
-    {
-      waiters++;
-      old = state;
-    }
-    pthread_mutex_unlock(&mutex);
-    return old;
-  }
-
-  void arrive(state_t old)
-  {
-    pthread_mutex_lock(&mutex);
-    {
-      while (old == state) {
-	pthread_cond_wait(&cond, &mutex);
+    synchronized (mutex) {
+      while (!opened) {
+        synchronized_wait(&cond, &mutex);
       }
-      waiters--;
     }
-    pthread_mutex_unlock(&mutex);
   }
 
-  void leave()
-  {
-    pthread_mutex_lock(&mutex);
-    {
-      waiters--;
-    }
-    pthread_mutex_unlock(&mutex);
-  }
-
-  bool empty()
-  {
-    bool occupied = true;
-    pthread_mutex_lock(&mutex);
-    {
-      occupied = waiters > 0 ? true : false;
-    }
-    pthread_mutex_unlock(&mutex);
-    return !occupied;
-  }
+private:
+  bool opened = false;
+  std::mutex mutex;
+  std::condition_variable cond;
 };
 
-//#endif
+} // namespace process {
 
-#endif /* GATE_H */
+#endif // __GATE_HPP__

@@ -1,54 +1,35 @@
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License
+
 #ifndef __PROCESS_EXECUTOR_HPP__
 #define __PROCESS_EXECUTOR_HPP__
 
 #include <process/deferred.hpp>
-#include <process/dispatch.hpp>
 #include <process/id.hpp>
+#include <process/process.hpp>
 
-#include <stout/preprocessor.hpp>
-#include <stout/thread.hpp>
+#include <stout/nothing.hpp>
+#include <stout/result_of.hpp>
 
 namespace process {
 
-// Underlying "process" which handles invoking actual callbacks
-// created through an Executor.
-class ExecutorProcess : public Process<ExecutorProcess>
-{
-private:
-  friend class Executor;
-
-  ExecutorProcess() : ProcessBase(ID::generate("__executor__")) {}
-  virtual ~ExecutorProcess() {}
-
-  // Not copyable, not assignable.
-  ExecutorProcess(const ExecutorProcess&);
-  ExecutorProcess& operator = (const ExecutorProcess&);
-
-  // No arg invoke.
-  void invoke(const std::tr1::function<void(void)>& f) { f(); }
-
-  // Args invoke.
-#define TEMPLATE(Z, N, DATA)                                            \
-  template <ENUM_PARAMS(N, typename A)>                                 \
-  void CAT(invoke, N)(                                         \
-      const std::tr1::function<void(ENUM_PARAMS(N, A))>& f,    \
-      ENUM_BINARY_PARAMS(N, A, a))                             \
-  {                                                            \
-    f(ENUM_PARAMS(N, a));                                      \
-  }
-
-  REPEAT_FROM_TO(1, 11, TEMPLATE, _) // Args A0 -> A9.
-#undef TEMPLATE
-};
-
-
 // Provides an abstraction that can take a standard function object
-// and convert it to a 'Deferred'. Each converted function object will
-// get invoked serially with respect to one another.
+// and defer or asynchronously execute it without needing a process.
+// Each converted function object will get execute serially with respect
+// to one another when invoked.
 class Executor
 {
 public:
-  Executor()
+  Executor() : process(ID::generate("__executor__"))
   {
     spawn(process);
   }
@@ -66,194 +47,66 @@ public:
     // TODO(benh): Note that this doesn't wait because that could
     // cause a deadlock ... thus, the semantics here are that no more
     // dispatches will occur after this function returns but one may
-    // be occuring concurrently.
+    // be occurring concurrently.
   }
 
-  // We can't easily use 'std::tr1::_Placeholder<X>' when doing macro
-  // expansion via ENUM_BINARY_PARAMS because compilers don't like it
-  // when you try and concatenate '<' 'N' '>'. Thus, we typedef them.
-private:
-#define TEMPLATE(Z, N, DATA)                            \
-  typedef std::tr1::_Placeholder<INC(N)> _ ## N;
-
-  REPEAT(10, TEMPLATE, _)
-#undef TEMPLATE
-
-public:
-  // We provide wrappers for all standard function objects.
-  Deferred<void(void)> defer(
-      const std::tr1::function<void(void)>& f)
+  template <typename F>
+  _Deferred<F> defer(F&& f)
   {
-    return Deferred<void(void)>(
-        std::tr1::bind(
-            &Executor::dispatcher,
-            process.self(), f));
+    return _Deferred<F>(process.self(), std::forward<F>(f));
   }
 
-#define TEMPLATE(Z, N, DATA)                                            \
-  template <ENUM_PARAMS(N, typename A)>                                 \
-  Deferred<void(ENUM_PARAMS(N, A))> defer(                              \
-      const std::tr1::function<void(ENUM_PARAMS(N, A))>& f)             \
-  {                                                                     \
-    return Deferred<void(ENUM_PARAMS(N, A))>(                           \
-        std::tr1::bind(                                                 \
-            &Executor::CAT(dispatcher, N)<ENUM_PARAMS(N, A)>,           \
-            process.self(), f,                                          \
-            ENUM_BINARY_PARAMS(N, _, () INTERCEPT)));                   \
-  }
-
-  REPEAT_FROM_TO(1, 11, TEMPLATE, _) // Args A0 -> A9.
-#undef TEMPLATE
-
-  // Unfortunately, it is currently difficult to "forward" type
-  // information from one result to another, so we must explicilty
-  // define wrappers for all std::tr1::bind results. First we start
-  // with the non-member std::tr1::bind results.
-  Deferred<void(void)> defer(
-      const std::tr1::_Bind<void(*(void))(void)>& b)
-  {
-    return defer(std::tr1::function<void(void)>(b));
-  }
-
-#define TEMPLATE(Z, N, DATA)                                            \
-  template <ENUM_PARAMS(N, typename A)>                                 \
-  Deferred<void(ENUM_PARAMS(N, A))> defer(                              \
-      const std::tr1::_Bind<                                            \
-      void(*(ENUM_PARAMS(N, _)))                                        \
-      (ENUM_PARAMS(N, A))>& b)                                          \
-  {                                                                     \
-    return defer(std::tr1::function<void(ENUM_PARAMS(N, A))>(b));       \
-  }
-
-  REPEAT_FROM_TO(1, 11, TEMPLATE, _) // Args A0 -> A9.
-#undef TEMPLATE
-
-  // Now the member std::tr1::bind results:
-  // 1. Non-const member (function), non-const pointer (receiver).
-  // 2. Const member, non-const pointer.
-  // 3. Const member, const pointer.
-  // 4. Non-const member, non-const reference.
-  // 5. Const member, non-const reference.
-  // 6. Const member, const reference.
-  // 7. Non-const member, value.
-  // 8. Const member, value.
-#define TEMPLATE(Z, N, DATA)                                            \
-  template <typename T ENUM_TRAILING_PARAMS(N, typename A)>             \
-  Deferred<void(ENUM_PARAMS(N, A))> defer(                              \
-      const std::tr1::_Bind<std::tr1::_Mem_fn<                          \
-      void(T::*)(ENUM_PARAMS(N, A))>                                    \
-      (T* ENUM_TRAILING_PARAMS(N, _))>& b)                              \
-  {                                                                     \
-    return defer(std::tr1::function<void(ENUM_PARAMS(N, A))>(b));       \
-  }                                                                     \
-                                                                        \
-  template <typename T ENUM_TRAILING_PARAMS(N, typename A)>             \
-  Deferred<void(ENUM_PARAMS(N, A))> defer(                              \
-      const std::tr1::_Bind<std::tr1::_Mem_fn<                          \
-      void(T::*)(ENUM_PARAMS(N, A)) const>                              \
-      (T* ENUM_TRAILING_PARAMS(N, _))>& b)                              \
-  {                                                                     \
-    return defer(std::tr1::function<void(ENUM_PARAMS(N, A))>(b));       \
-  }                                                                     \
-                                                                        \
-  template <typename T ENUM_TRAILING_PARAMS(N, typename A)>             \
-  Deferred<void(ENUM_PARAMS(N, A))> defer(                              \
-      const std::tr1::_Bind<std::tr1::_Mem_fn<                          \
-      void(T::*)(ENUM_PARAMS(N, A)) const>                              \
-      (const T* ENUM_TRAILING_PARAMS(N, _))>& b)                        \
-  {                                                                     \
-    return defer(std::tr1::function<void(ENUM_PARAMS(N, A))>(b));       \
-  }                                                                     \
-                                                                        \
-  template <typename T ENUM_TRAILING_PARAMS(N, typename A)>             \
-  Deferred<void(ENUM_PARAMS(N, A))> defer(                              \
-      const std::tr1::_Bind<std::tr1::_Mem_fn<                          \
-      void(T::*)(ENUM_PARAMS(N, A))>                                    \
-      (std::tr1::reference_wrapper<T> ENUM_TRAILING_PARAMS(N, _))>& b)  \
-  {                                                                     \
-    return defer(std::tr1::function<void(ENUM_PARAMS(N, A))>(b));       \
-  }                                                                     \
-                                                                        \
-  template <typename T ENUM_TRAILING_PARAMS(N, typename A)>             \
-  Deferred<void(ENUM_PARAMS(N, A))> defer(                              \
-      const std::tr1::_Bind<std::tr1::_Mem_fn<                          \
-      void(T::*)(ENUM_PARAMS(N, A)) const>                              \
-      (std::tr1::reference_wrapper<T> ENUM_TRAILING_PARAMS(N, _))>& b)  \
-  {                                                                     \
-    return defer(std::tr1::function<void(ENUM_PARAMS(N, A))>(b));       \
-  }                                                                     \
-                                                                        \
-  template <typename T ENUM_TRAILING_PARAMS(N, typename A)>             \
-  Deferred<void(ENUM_PARAMS(N, A))> defer(                              \
-      const std::tr1::_Bind<std::tr1::_Mem_fn<                          \
-      void(T::*)(ENUM_PARAMS(N, A)) const>                              \
-      (std::tr1::reference_wrapper<const T> ENUM_TRAILING_PARAMS(N, _))>& b) \
-  {                                                                     \
-    return defer(std::tr1::function<void(ENUM_PARAMS(N, A))>(b));       \
-  }                                                                     \
-                                                                        \
-  template <typename T ENUM_TRAILING_PARAMS(N, typename A)>             \
-  Deferred<void(ENUM_PARAMS(N, A))> defer(                              \
-      const std::tr1::_Bind<std::tr1::_Mem_fn<                          \
-      void(T::*)(ENUM_PARAMS(N, A))>                                    \
-      (T ENUM_TRAILING_PARAMS(N, _))>& b)                               \
-  {                                                                     \
-    return defer(std::tr1::function<void(ENUM_PARAMS(N, A))>(b));       \
-  }                                                                     \
-                                                                        \
-  template <typename T ENUM_TRAILING_PARAMS(N, typename A)>             \
-  Deferred<void(ENUM_PARAMS(N, A))> defer(                              \
-      const std::tr1::_Bind<std::tr1::_Mem_fn<                          \
-      void(T::*)(ENUM_PARAMS(N, A)) const>                              \
-      (T ENUM_TRAILING_PARAMS(N, _))>& b)                               \
-  {                                                                     \
-    return defer(std::tr1::function<void(ENUM_PARAMS(N, A))>(b));       \
-  }
-
-  REPEAT(11, TEMPLATE, _) // No args and args A0 -> A9.
-#undef TEMPLATE
 
 private:
   // Not copyable, not assignable.
   Executor(const Executor&);
-  Executor& operator = (const Executor&);
+  Executor& operator=(const Executor&);
 
-  static void dispatcher(
-      const PID<ExecutorProcess>& pid,
-      const std::tr1::function<void(void)>& f)
+  ProcessBase process;
+
+
+public:
+  template <
+      typename F,
+      typename R = typename result_of<F()>::type,
+      typename std::enable_if<!std::is_void<R>::value, int>::type = 0>
+  auto execute(F&& f)
+    -> decltype(dispatch(process, std::function<R()>(std::forward<F>(f))))
   {
-    // TODO(benh): Why not just use internal::dispatch?
-    dispatch(pid, &ExecutorProcess::invoke, f);
+    // NOTE: Currently we cannot pass a mutable lambda into `dispatch()`
+    // because it would be captured by copy, so we convert `f` into a
+    // `std::function` to bypass this restriction.
+    return dispatch(process, std::function<R()>(std::forward<F>(f)));
   }
 
-#define TEMPLATE(Z, N, DATA)                                            \
-  template <ENUM_PARAMS(N, typename A)>                                 \
-  static void CAT(dispatcher, N)(                                       \
-      const PID<ExecutorProcess>& pid,                                  \
-      const std::tr1::function<void(ENUM_PARAMS(N, A))>& f,             \
-      ENUM_BINARY_PARAMS(N, A, a))                                      \
-  {                                                                     \
-    dispatch(                                                           \
-        pid,                                                            \
-        &ExecutorProcess::CAT(invoke, N)<ENUM_PARAMS(N, A)>,            \
-        f, ENUM_PARAMS(N, a));                                          \
+  // NOTE: This overload for `void` returns `Future<Nothing>` so we can
+  // chain. This follows the same behavior as `async()`.
+  template <
+      typename F,
+      typename R = typename result_of<F()>::type,
+      typename std::enable_if<std::is_void<R>::value, int>::type = 0>
+  Future<Nothing> execute(F&& f)
+  {
+    // NOTE: Currently we cannot pass a mutable lambda into `dispatch()`
+    // because it would be captured by copy, so we convert `f` into a
+    // `std::function` to bypass this restriction. This wrapper also
+    // avoids `f` being evaluated when it is a nested bind.
+    // TODO(chhsiao): Capture `f` by forwarding once we switch to C++14.
+    return dispatch(
+        process,
+        std::bind(
+            [](const std::function<R()>& f_) { f_(); return Nothing(); },
+            std::function<R()>(std::forward<F>(f))));
   }
-
-  REPEAT_FROM_TO(1, 11, TEMPLATE, _) // Args A0 -> A9.
-#undef TEMPLATE
-
-  ExecutorProcess process;
 };
 
 
-// Per thread executor pointer. The extra level of indirection from
-// _executor_ to __executor__ is used in order to take advantage of
-// the ThreadLocal operators without needing the extra dereference as
-// well as lazily construct the actual executor.
-extern ThreadLocal<Executor>* _executor_;
+// Per thread executor pointer. We use a pointer to lazily construct the
+// actual executor.
+extern thread_local Executor* _executor_;
 
 #define __executor__                                                    \
-  (*_executor_ == NULL ? *_executor_ = new Executor() : *_executor_)
+  (_executor_ == nullptr ? _executor_ = new Executor() : _executor_)
 
 } // namespace process {
 

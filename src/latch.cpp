@@ -1,3 +1,15 @@
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License
+
 #include <process/id.hpp>
 #include <process/latch.hpp>
 #include <process/process.hpp>
@@ -11,10 +23,8 @@ namespace process {
 // within libprocess such that it doesn't cost a memory allocation, a
 // spawn, a message send, a wait, and two user-space context-switchs.
 
-Latch::Latch()
+Latch::Latch() : triggered(false)
 {
-  triggered = false;
-
   // Deadlock is possible if one thread is trying to delete a latch
   // but the libprocess thread(s) is trying to acquire a resource the
   // deleting thread is holding. Hence, we only save the PID for
@@ -26,22 +36,27 @@ Latch::Latch()
 
 Latch::~Latch()
 {
-  terminate(pid);
+  bool expected = false;
+  if (triggered.compare_exchange_strong(expected, true)) {
+    terminate(pid);
+  }
 }
 
 
-void Latch::trigger()
+bool Latch::trigger()
 {
-  if (!triggered) {
+  bool expected = false;
+  if (triggered.compare_exchange_strong(expected, true)) {
     terminate(pid);
-    triggered = true;
+    return true;
   }
+  return false;
 }
 
 
 bool Latch::await(const Duration& duration)
 {
-  if (!triggered) {
+  if (!triggered.load()) {
     process::wait(pid, duration); // Explict to disambiguate.
     // It's possible that we failed to wait because:
     //   (1) Our process has already terminated.
@@ -53,7 +68,7 @@ bool Latch::await(const Duration& duration)
     // 'triggered' (which will also capture cases where we actually
     // timed out but have since triggered, which seems like an
     // acceptable semantics given such a "tie").
-    return triggered;
+    return triggered.load();
   }
 
   return true;

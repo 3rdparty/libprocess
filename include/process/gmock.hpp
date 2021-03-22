@@ -1,11 +1,19 @@
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License
+
 #ifndef __PROCESS_GMOCK_HPP__
 #define __PROCESS_GMOCK_HPP__
 
-#include <pthread.h>
-
 #include <gmock/gmock.h>
-
-#include <tr1/tuple>
 
 #include <process/dispatch.hpp>
 #include <process/event.hpp>
@@ -14,20 +22,7 @@
 
 #include <stout/exit.hpp>
 #include <stout/nothing.hpp>
-
-
-// THIS IS DEPRECATED AND BROKEN! REPLACE ALL USES!
-#define EXPECT_MESSAGE(name, from, to)                                  \
-  EXPECT_CALL(*new process::MockFilter(),                              \
-              filter(testing::A<const process::MessageEvent&>()))       \
-    .With(process::MessageMatcher(name, from, to))
-
-
-// THIS IS DEPRECATED AND BROKEN! REPLACE ALL USES!
-#define EXPECT_DISPATCH(pid, method)                                    \
-  EXPECT_CALL(*new process::MockFilter(),                              \
-              filter(testing::A<const process::DispatchEvent&>()))      \
-    .With(process::DispatchMatcher(pid, method))
+#include <stout/synchronized.hpp>
 
 
 #define FUTURE_MESSAGE(name, from, to)          \
@@ -36,6 +31,18 @@
 #define DROP_MESSAGE(name, from, to)            \
   process::FutureMessage(name, from, to, true)
 
+
+// The mechanism of how we match method dispatches is done by
+// comparing std::type_info of the member function pointers. Because
+// of this, the method function pointer passed to either
+// FUTURE_DISPATCH or DROP_DISPATCH must match exactly the member
+// function that is passed to the dispatch method.
+// TODO(tnachen): In a situation where a base class has a virtual
+// function and that a derived class overrides, and if in unit tests
+// we want to verify it calls the exact derived member function, we
+// need to change how dispatch matching works. One possible way is to
+// move the dispatch matching logic at event dequeue time, as we then
+// have the actual Process the dispatch event is calling to.
 #define FUTURE_DISPATCH(pid, method)            \
   process::FutureDispatch(pid, method)
 
@@ -45,8 +52,21 @@
 #define DROP_MESSAGES(name, from, to)           \
   process::DropMessages(name, from, to)
 
+#define EXPECT_NO_FUTURE_MESSAGES(name, from, to)       \
+  process::ExpectNoFutureMessages(name, from, to)
+
 #define DROP_DISPATCHES(pid, method)            \
   process::DropDispatches(pid, method)
+
+#define EXPECT_NO_FUTURE_DISPATCHES(pid, method)        \
+  process::ExpectNoFutureDispatches(pid, method)
+
+
+#define FUTURE_EXITED(from, to)                 \
+  process::FutureExited(from, to)
+
+#define DROP_EXITED(from, to)                   \
+  process::FutureExited(from, to, true)
 
 
 ACTION_TEMPLATE(PromiseArg,
@@ -58,7 +78,7 @@ ACTION_TEMPLATE(PromiseArg,
   // WillRepeatedly). We won't be able to set it a second time but at
   // least we won't get a segmentation fault. We could also consider
   // warning users if they attempted to set it more than once.
-  promise->set(std::tr1::get<k>(args));
+  promise->set(std::get<k>(args));
   delete promise;
 }
 
@@ -82,7 +102,7 @@ ACTION_TEMPLATE(PromiseArgField,
   // WillRepeatedly). We won't be able to set it a second time but at
   // least we won't get a segmentation fault. We could also consider
   // warning users if they attempted to set it more than once.
-  promise->set(*(std::tr1::get<k>(args).*field));
+  promise->set(*(std::get<k>(args).*field));
   delete promise;
 }
 
@@ -95,6 +115,32 @@ PromiseArgFieldActionP2<index, Field, process::Promise<T>*> FutureArgField(
   process::Promise<T>* promise = new process::Promise<T>();
   *future = promise->future();
   return PromiseArgField<index>(field, promise);
+}
+
+
+ACTION_TEMPLATE(PromiseArgNotPointerField,
+                HAS_1_TEMPLATE_PARAMS(int, k),
+                AND_2_VALUE_PARAMS(field, promise))
+{
+  // TODO(benh): Use a shared_ptr for promise to defend against this
+  // action getting invoked more than once (e.g., used via
+  // WillRepeatedly). We won't be able to set it a second time but at
+  // least we won't get a segmentation fault. We could also consider
+  // warning users if they attempted to set it more than once.
+  promise->set(std::get<k>(args).*field);
+  delete promise;
+}
+
+
+template <int index, typename Field, typename T>
+PromiseArgNotPointerFieldActionP2<index, Field, process::Promise<T>*>
+FutureArgNotPointerField(
+    Field field,
+    process::Future<T>* future)
+{
+  process::Promise<T>* promise = new process::Promise<T>();
+  *future = promise->future();
+  return PromiseArgNotPointerField<index>(field, promise);
 }
 
 
@@ -125,6 +171,70 @@ FutureSatisfy(process::Future<Nothing>* future)
 }
 
 
+// This action invokes an "inner" action but captures the result and
+// stores a copy of it in a future. Note that this is implemented
+// similarly to the IgnoreResult action, which relies on the cast
+// operator to Action<F> which must occur (implicitly) before the
+// expression has completed, hence we can pass the Future<R>* all the
+// way through to our action "implementation".
+template <typename R, typename A>
+class FutureResultAction
+{
+public:
+  explicit FutureResultAction(process::Future<R>* future, const A& action)
+    : future(future),
+      action(action) {}
+
+  template <typename F>
+  operator ::testing::Action<F>() const
+  {
+    return ::testing::Action<F>(new Implementation<F>(future, action));
+  }
+
+private:
+  template <typename F>
+  class Implementation : public ::testing::ActionInterface<F>
+  {
+  public:
+    explicit Implementation(process::Future<R>* future, const A& action)
+      : action(action)
+    {
+      *future = promise.future();
+    }
+
+    typename ::testing::ActionInterface<F>::Result Perform(
+        const typename ::testing::ActionInterface<F>::ArgumentTuple& args)
+        override
+    {
+      const typename ::testing::ActionInterface<F>::Result result =
+        action.Perform(args);
+      promise.set(result);
+      return result;
+    }
+
+  private:
+    // Not copyable, not assignable.
+    Implementation(const Implementation&);
+    Implementation& operator=(const Implementation&);
+
+    process::Promise<R> promise;
+    const ::testing::Action<F> action;
+  };
+
+  process::Future<R>* future;
+  const A action;
+};
+
+
+template <typename R, typename A>
+FutureResultAction<R, A> FutureResult(
+    process::Future<R>* future,
+    const A& action)
+{
+  return FutureResultAction<R, A>(future, action);
+}
+
+
 namespace process {
 
 class MockFilter : public Filter
@@ -132,20 +242,28 @@ class MockFilter : public Filter
 public:
   MockFilter()
   {
-    EXPECT_CALL(*this, filter(testing::A<const MessageEvent&>()))
+    EXPECT_CALL(*this, filter(
+        testing::A<const UPID&>(),
+        testing::A<const MessageEvent&>()))
       .WillRepeatedly(testing::Return(false));
-    EXPECT_CALL(*this, filter(testing::A<const DispatchEvent&>()))
+    EXPECT_CALL(*this, filter(
+        testing::A<const UPID&>(),
+        testing::A<const DispatchEvent&>()))
       .WillRepeatedly(testing::Return(false));
-    EXPECT_CALL(*this, filter(testing::A<const HttpEvent&>()))
+    EXPECT_CALL(*this, filter(
+        testing::A<const UPID&>(),
+        testing::A<const HttpEvent&>()))
       .WillRepeatedly(testing::Return(false));
-    EXPECT_CALL(*this, filter(testing::A<const ExitedEvent&>()))
+    EXPECT_CALL(*this, filter(
+        testing::A<const UPID&>(),
+        testing::A<const ExitedEvent&>()))
       .WillRepeatedly(testing::Return(false));
   }
 
-  MOCK_METHOD1(filter, bool(const MessageEvent&));
-  MOCK_METHOD1(filter, bool(const DispatchEvent&));
-  MOCK_METHOD1(filter, bool(const HttpEvent&));
-  MOCK_METHOD1(filter, bool(const ExitedEvent&));
+  MOCK_METHOD2(filter, bool(const UPID& process, const MessageEvent&));
+  MOCK_METHOD2(filter, bool(const UPID& process, const DispatchEvent&));
+  MOCK_METHOD2(filter, bool(const UPID& process, const HttpEvent&));
+  MOCK_METHOD2(filter, bool(const UPID& process, const ExitedEvent&));
 };
 
 
@@ -156,36 +274,41 @@ public:
 class TestsFilter : public Filter
 {
 public:
-  TestsFilter()
+  TestsFilter() = default;
+
+  bool filter(const UPID& process, const MessageEvent& event) override
   {
-    // We use a recursive mutex here in the event that satisfying the
-    // future created in FutureMessage or FutureDispatch via the
-    // FutureArgField or FutureSatisfy actions invokes callbacks (from
-    // Future::then or Future::onAny, etc) that themselves invoke
-    // FutureDispatch or FutureMessage.
-    pthread_mutexattr_t attr;
-    pthread_mutexattr_init(&attr);
-    pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
-    pthread_mutex_init(&mutex, &attr);
-    pthread_mutexattr_destroy(&attr);
+    return handle(process, event);
+  }
+  bool filter(const UPID& process, const DispatchEvent& event) override
+  {
+    return handle(process, event);
+  }
+  bool filter(const UPID& process, const HttpEvent& event) override
+  {
+    return handle(process, event);
+  }
+  bool filter(const UPID& process, const ExitedEvent& event) override
+  {
+    return handle(process, event);
   }
 
-  virtual bool filter(const MessageEvent& event) { return handle(event); }
-  virtual bool filter(const DispatchEvent& event) { return handle(event); }
-  virtual bool filter(const HttpEvent& event) { return handle(event); }
-  virtual bool filter(const ExitedEvent& event) { return handle(event); }
-
   template <typename T>
-  bool handle(const T& t)
+  bool handle(const UPID& process, const T& t)
   {
-    pthread_mutex_lock(&mutex);
-    bool drop = mock.filter(t);
-    pthread_mutex_unlock(&mutex);
-    return drop;
+    synchronized (mutex) {
+      return mock.filter(process, t);
+    }
   }
 
   MockFilter mock;
-  pthread_mutex_t mutex;;
+
+  // We use a recursive mutex here in the event that satisfying the
+  // future created in FutureMessage or FutureDispatch via the
+  // FutureArgField or FutureSatisfy actions invokes callbacks (from
+  // Future::then or Future::onAny, etc) that themselves invoke
+  // FutureDispatch or FutureMessage.
+  std::recursive_mutex mutex;
 };
 
 
@@ -203,7 +326,7 @@ public:
   TestsFilter* install()
   {
     if (!started) {
-      EXIT(1)
+      EXIT(EXIT_FAILURE)
         << "To use FUTURE/DROP_MESSAGE/DISPATCH, etc. you need to do the "
         << "following before you invoke RUN_ALL_TESTS():\n\n"
         << "\t::testing::TestEventListeners& listeners =\n"
@@ -211,7 +334,7 @@ public:
         << "\tlisteners.Append(process::FilterTestEventListener::instance());";
     }
 
-    if (filter != NULL) {
+    if (filter != nullptr) {
       return filter;
     }
 
@@ -223,23 +346,23 @@ public:
     return filter;
   }
 
-  virtual void OnTestProgramStart(const ::testing::UnitTest&)
+  void OnTestProgramStart(const ::testing::UnitTest&) override
   {
     started = true;
   }
 
-  virtual void OnTestEnd(const ::testing::TestInfo&)
+  void OnTestEnd(const ::testing::TestInfo&) override
   {
-    if (filter != NULL) {
+    if (filter != nullptr) {
       // Remove the filter in libprocess _before_ deleting.
-      process::filter(NULL);
+      process::filter(nullptr);
       delete filter;
-      filter = NULL;
+      filter = nullptr;
     }
   }
 
 private:
-  FilterTestEventListener() : filter(NULL), started(false) {}
+  FilterTestEventListener() : filter(nullptr), started(false) {}
 
   TestsFilter* filter;
 
@@ -249,21 +372,126 @@ private:
 };
 
 
-MATCHER_P3(MessageMatcher, name, from, to, "")
+MATCHER_P2(MessageMatcher, name, from, "")
 {
-  const MessageEvent& event = ::std::tr1::get<0>(arg);
-  return (testing::Matcher<std::string>(name).Matches(event.message->name) &&
-          testing::Matcher<UPID>(from).Matches(event.message->from) &&
-          testing::Matcher<UPID>(to).Matches(event.message->to));
+  const MessageEvent& event = ::std::get<1>(arg);
+  return (testing::Matcher<std::string>(name).Matches(event.message.name) &&
+          testing::Matcher<UPID>(from).Matches(event.message.from));
 }
 
 
-MATCHER_P2(DispatchMatcher, pid, method, "")
+// This matches protobuf messages that are described using the
+// standard protocol buffer "union" trick, see:
+// https://developers.google.com/protocol-buffers/docs/techniques#union.
+MATCHER_P3(UnionMessageMatcher, message, unionType, from, "")
 {
-  const DispatchEvent& event = ::std::tr1::get<0>(arg);
-  return (testing::Matcher<UPID>(pid).Matches(event.pid) &&
-          testing::Matcher<std::string>(internal::canonicalize(method))
-          .Matches(event.method));
+  const process::MessageEvent& event = ::std::get<1>(arg);
+  message_type message;
+
+  return (testing::Matcher<std::string>(message.GetTypeName()).Matches(
+              event.message.name) &&
+          message.ParseFromString(event.message.body) &&
+          testing::Matcher<unionType_type>(unionType).Matches(message.type()) &&
+          testing::Matcher<process::UPID>(from).Matches(event.message.from));
+}
+
+
+MATCHER_P(DispatchMatcher, method, "")
+{
+  const DispatchEvent& event = ::std::get<1>(arg);
+  return (event.functionType.isSome() &&
+          *event.functionType.get() == typeid(method));
+}
+
+
+MATCHER_P(ExitedMatcher, from, "")
+{
+  const ExitedEvent& event = ::std::get<1>(arg);
+  return testing::Matcher<process::UPID>(from).Matches(event.pid);
+}
+
+
+MATCHER_P3(HttpMatcher, message, path, deserializer, "")
+{
+  const HttpEvent& event = ::std::get<1>(arg);
+
+  Try<message_type> message_ = deserializer(event.request->body);
+  if (message_.isError()) {
+    return false;
+  }
+
+  return (testing::Matcher<std::string>(path).Matches(event.request->url.path));
+}
+
+
+// See `UnionMessageMatcher` for more details on protobuf messages using the
+// "union" trick.
+MATCHER_P4(UnionHttpMatcher, message, unionType, path, deserializer, "")
+{
+  const HttpEvent& event = ::std::get<1>(arg);
+
+  Try<message_type> message_ = deserializer(event.request->body);
+  if (message_.isError()) {
+    return false;
+  }
+
+  return (
+      testing::Matcher<unionType_type>(unionType).Matches(message_->type()) &&
+      testing::Matcher<std::string>(path).Matches(event.request->url.path));
+}
+
+
+template <typename Message, typename Path, typename Deserializer>
+Future<http::Request> FutureHttpRequest(
+    Message message,
+    Path path,
+    Deserializer deserializer,
+    bool drop = false)
+{
+  TestsFilter* filter = FilterTestEventListener::instance()->install();
+  Future<http::Request> future;
+  synchronized (filter->mutex) {
+    EXPECT_CALL(filter->mock, filter(
+        testing::A<const UPID&>(),
+        testing::A<const HttpEvent&>()))
+      .With(HttpMatcher(message, path, deserializer))
+      .WillOnce(testing::DoAll(FutureArgField<1>(
+                                   &HttpEvent::request,
+                                   &future),
+                               testing::Return(drop)))
+      .RetiresOnSaturation(); // Don't impose any subsequent expectations.
+  }
+
+  return future;
+}
+
+
+template <typename Message,
+          typename UnionType,
+          typename Path,
+          typename Deserializer>
+Future<http::Request> FutureUnionHttpRequest(
+    Message message,
+    UnionType unionType,
+    Path path,
+    Deserializer deserializer,
+    bool drop = false)
+{
+  TestsFilter* filter = FilterTestEventListener::instance()->install();
+  Future<http::Request> future;
+  synchronized (filter->mutex) {
+    EXPECT_CALL(filter->mock, filter(
+        testing::A<const UPID&>(),
+        testing::A<const HttpEvent&>()))
+      .With(UnionHttpMatcher(message, unionType, path, deserializer))
+      .WillOnce(testing::DoAll(FutureArgField<1>(
+                                   &HttpEvent::request,
+                                   &future),
+                               testing::Return(drop)))
+      .RetiresOnSaturation(); // Don't impose any subsequent expectations.
+  }
+
+  return future;
 }
 
 
@@ -271,14 +499,39 @@ template <typename Name, typename From, typename To>
 Future<Message> FutureMessage(Name name, From from, To to, bool drop = false)
 {
   TestsFilter* filter = FilterTestEventListener::instance()->install();
-  pthread_mutex_lock(&filter->mutex);
   Future<Message> future;
-  EXPECT_CALL(filter->mock, filter(testing::A<const MessageEvent&>()))
-    .With(MessageMatcher(name, from, to))
-    .WillOnce(testing::DoAll(FutureArgField<0>(&MessageEvent::message, &future),
-                             testing::Return(drop)))
-    .RetiresOnSaturation(); // Don't impose any subsequent expectations.
-  pthread_mutex_unlock(&filter->mutex);
+  synchronized (filter->mutex) {
+    EXPECT_CALL(filter->mock, filter(to, testing::A<const MessageEvent&>()))
+      .With(MessageMatcher(name, from))
+      .WillOnce(testing::DoAll(FutureArgNotPointerField<1>(
+                                   &MessageEvent::message,
+                                   &future),
+                               testing::Return(drop)))
+      .RetiresOnSaturation(); // Don't impose any subsequent expectations.
+  }
+
+  return future;
+}
+
+
+template <typename Message, typename UnionType, typename From, typename To>
+Future<process::Message> FutureUnionMessage(
+    Message message, UnionType unionType, From from, To to, bool drop = false)
+{
+  TestsFilter* filter =
+    FilterTestEventListener::instance()->install();
+
+  Future<process::Message> future;
+  synchronized (filter->mutex) {
+    EXPECT_CALL(filter->mock, filter(to, testing::A<const MessageEvent&>()))
+      .With(UnionMessageMatcher(message, unionType, from))
+      .WillOnce(testing::DoAll(FutureArgNotPointerField<1>(
+                                   &MessageEvent::message,
+                                   &future),
+                               testing::Return(drop)))
+      .RetiresOnSaturation(); // Don't impose any subsequent expectations.
+  }
+
   return future;
 }
 
@@ -287,14 +540,15 @@ template <typename PID, typename Method>
 Future<Nothing> FutureDispatch(PID pid, Method method, bool drop = false)
 {
   TestsFilter* filter = FilterTestEventListener::instance()->install();
-  pthread_mutex_lock(&filter->mutex);
   Future<Nothing> future;
-  EXPECT_CALL(filter->mock, filter(testing::A<const DispatchEvent&>()))
-    .With(DispatchMatcher(pid, method))
-    .WillOnce(testing::DoAll(FutureSatisfy(&future),
-                             testing::Return(drop)))
-    .RetiresOnSaturation(); // Don't impose any subsequent expectations.
-  pthread_mutex_unlock(&filter->mutex);
+  synchronized (filter->mutex) {
+    EXPECT_CALL(filter->mock, filter(pid, testing::A<const DispatchEvent&>()))
+      .With(DispatchMatcher(method))
+      .WillOnce(testing::DoAll(FutureSatisfy(&future),
+                              testing::Return(drop)))
+      .RetiresOnSaturation(); // Don't impose any subsequent expectations.
+  }
+
   return future;
 }
 
@@ -303,11 +557,130 @@ template <typename Name, typename From, typename To>
 void DropMessages(Name name, From from, To to)
 {
   TestsFilter* filter = FilterTestEventListener::instance()->install();
-  pthread_mutex_lock(&filter->mutex);
-  EXPECT_CALL(filter->mock, filter(testing::A<const MessageEvent&>()))
-    .With(MessageMatcher(name, from, to))
-    .WillRepeatedly(testing::Return(true));
-  pthread_mutex_unlock(&filter->mutex);
+  synchronized (filter->mutex) {
+    EXPECT_CALL(filter->mock, filter(to, testing::A<const MessageEvent&>()))
+      .With(MessageMatcher(name, from))
+      .WillRepeatedly(testing::Return(true));
+  }
+}
+
+
+template <typename Message, typename UnionType, typename From, typename To>
+void DropUnionMessages(Message message, UnionType unionType, From from, To to)
+{
+  TestsFilter* filter = FilterTestEventListener::instance()->install();
+  synchronized (filter->mutex) {
+    EXPECT_CALL(filter->mock, filter(to, testing::A<const MessageEvent&>()))
+      .With(UnionMessageMatcher(message, unionType, from))
+      .WillRepeatedly(testing::Return(true));
+  }
+}
+
+
+template <typename Message, typename Path, typename Deserializer>
+void DropHttpRequests(
+    Message message,
+    Path path,
+    Deserializer deserializer,
+    bool drop = false)
+{
+  TestsFilter* filter = FilterTestEventListener::instance()->install();
+  synchronized (filter->mutex) {
+    EXPECT_CALL(filter->mock, filter(
+        testing::A<const UPID&>(),
+        testing::A<const HttpEvent&>()))
+      .With(HttpMatcher(message, path, deserializer))
+      .WillRepeatedly(testing::Return(true));
+  }
+}
+
+
+template <typename Message,
+          typename UnionType,
+          typename Path,
+          typename Deserializer>
+void DropUnionHttpRequests(
+    Message message,
+    UnionType unionType,
+    Path path,
+    Deserializer deserializer,
+    bool drop = false)
+{
+  TestsFilter* filter = FilterTestEventListener::instance()->install();
+  Future<http::Request> future;
+  synchronized (filter->mutex) {
+    EXPECT_CALL(filter->mock, filter(
+        testing::A<const UPID&>(),
+        testing::A<const HttpEvent&>()))
+      .With(UnionHttpMatcher(message, unionType, path, deserializer))
+      .WillRepeatedly(testing::Return(true));
+  }
+}
+
+
+template <typename Message, typename Path, typename Deserializer>
+void ExpectNoFutureHttpRequests(
+    Message message,
+    Path path,
+    Deserializer deserializer,
+    bool drop = false)
+{
+  TestsFilter* filter = FilterTestEventListener::instance()->install();
+  synchronized (filter->mutex) {
+    EXPECT_CALL(filter->mock, filter(
+        testing::A<const UPID&>(),
+        testing::A<const HttpEvent&>()))
+      .With(HttpMatcher(message, path, deserializer))
+      .Times(0);
+  }
+}
+
+
+template <typename Message,
+          typename UnionType,
+          typename Path,
+          typename Deserializer>
+void ExpectNoFutureUnionHttpRequests(
+    Message message,
+    UnionType unionType,
+    Path path,
+    Deserializer deserializer,
+    bool drop = false)
+{
+  TestsFilter* filter = FilterTestEventListener::instance()->install();
+  Future<http::Request> future;
+  synchronized (filter->mutex) {
+    EXPECT_CALL(filter->mock, filter(
+        testing::A<const UPID&>(),
+        testing::A<const HttpEvent&>()))
+      .With(UnionHttpMatcher(message, unionType, path, deserializer))
+      .Times(0);
+  }
+}
+
+
+template <typename Name, typename From, typename To>
+void ExpectNoFutureMessages(Name name, From from, To to)
+{
+  TestsFilter* filter = FilterTestEventListener::instance()->install();
+  synchronized (filter->mutex) {
+    EXPECT_CALL(filter->mock, filter(to, testing::A<const MessageEvent&>()))
+      .With(MessageMatcher(name, from))
+      .Times(0);
+  }
+}
+
+
+template <typename Message, typename UnionType, typename From, typename To>
+void ExpectNoFutureUnionMessages(
+    Message message, UnionType unionType, From from, To to)
+{
+  TestsFilter* filter = FilterTestEventListener::instance()->install();
+  synchronized (filter->mutex) {
+    EXPECT_CALL(filter->mock, filter(to, testing::A<const MessageEvent&>()))
+      .With(UnionMessageMatcher(message, unionType, from))
+      .Times(0);
+  }
 }
 
 
@@ -315,11 +688,40 @@ template <typename PID, typename Method>
 void DropDispatches(PID pid, Method method)
 {
   TestsFilter* filter = FilterTestEventListener::instance()->install();
-  pthread_mutex_lock(&filter->mutex);
-  EXPECT_CALL(filter->mock, filter(testing::A<const DispatchEvent&>()))
-    .With(DispatchMatcher(pid, method))
-    .WillRepeatedly(testing::Return(true));
-  pthread_mutex_unlock(&filter->mutex);
+  synchronized (filter->mutex) {
+    EXPECT_CALL(filter->mock, filter(pid, testing::A<const DispatchEvent&>()))
+      .With(DispatchMatcher(method))
+      .WillRepeatedly(testing::Return(true));
+  }
+}
+
+
+template <typename PID, typename Method>
+void ExpectNoFutureDispatches(PID pid, Method method)
+{
+  TestsFilter* filter = FilterTestEventListener::instance()->install();
+  synchronized (filter->mutex) {
+    EXPECT_CALL(filter->mock, filter(pid, testing::A<const DispatchEvent&>()))
+      .With(DispatchMatcher(method))
+      .Times(0);
+  }
+}
+
+
+template <typename From, typename To>
+Future<Nothing> FutureExited(From from, To to, bool drop = false)
+{
+  TestsFilter* filter = FilterTestEventListener::instance()->install();
+  Future<Nothing> future;
+  synchronized (filter->mutex) {
+    EXPECT_CALL(filter->mock, filter(to, testing::A<const ExitedEvent&>()))
+      .With(ExitedMatcher(from))
+      .WillOnce(testing::DoAll(FutureSatisfy(&future),
+                              testing::Return(drop)))
+      .RetiresOnSaturation(); // Don't impose any subsequent expectations.
+  }
+
+  return future;
 }
 
 } // namespace process {

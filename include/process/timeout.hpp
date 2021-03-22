@@ -1,8 +1,19 @@
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License
+
 #ifndef __PROCESS_TIMEOUT_HPP__
 #define __PROCESS_TIMEOUT_HPP__
 
-#include <process/process.hpp>
-
+#include <process/clock.hpp>
 #include <process/time.hpp>
 
 #include <stout/duration.hpp>
@@ -15,7 +26,7 @@ class Timeout
 public:
   Timeout() : timeout(Clock::now()) {}
 
-  Timeout(const Time& time) : timeout(time) {}
+  explicit Timeout(const Time& time) : timeout(time) {}
 
   Timeout(const Timeout& that) : timeout(that.timeout) {}
 
@@ -23,10 +34,16 @@ public:
   // from now.
   static Timeout in(const Duration& duration)
   {
-    return Timeout(Clock::now() + duration);
+    // We need now() + duration < Duration::max() to avoid overflow.
+    // Therefore, we check for now() < duration::max() - duration.
+    if (Clock::now().duration() < Duration::max() - duration) {
+      return Timeout(Clock::now() + duration);
+    }
+
+    return Timeout(Time::max());
   }
 
-  Timeout& operator = (const Timeout& that)
+  Timeout& operator=(const Timeout& that)
   {
     if (this != &that) {
       timeout = that.timeout;
@@ -35,23 +52,23 @@ public:
     return *this;
   }
 
-  Timeout& operator = (const Duration& duration)
+  Timeout& operator=(const Duration& duration)
   {
     timeout = Clock::now() + duration;
     return *this;
   }
 
-  bool operator == (const Timeout& that) const
+  bool operator==(const Timeout& that) const
   {
     return timeout == that.timeout;
   }
 
-  bool operator < (const Timeout& that) const
+  bool operator<(const Timeout& that) const
   {
     return timeout < that.timeout;
   }
 
-  bool operator <= (const Timeout& that) const
+  bool operator<=(const Timeout& that) const
   {
     return timeout <= that.timeout;
   }

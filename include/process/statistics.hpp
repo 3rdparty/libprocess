@@ -1,160 +1,158 @@
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License
+
 #ifndef __PROCESS_STATISTICS_HPP__
 #define __PROCESS_STATISTICS_HPP__
 
-#include <process/clock.hpp>
-#include <process/future.hpp>
-#include <process/time.hpp>
+#include <glog/logging.h>
 
-#include <stout/duration.hpp>
-#include <stout/none.hpp>
-#include <stout/nothing.hpp>
+#include <algorithm>
+#include <iterator>
+#include <type_traits>
+#include <vector>
+
+#include <process/timeseries.hpp>
+
+#include <stout/foreach.hpp>
 #include <stout/option.hpp>
-#include <stout/owned.hpp>
 
 namespace process {
 
-// Forward declarations.
-class Statistics;
-class StatisticsProcess;
-
-namespace meters {
-  class Meter;
-  class TimeRate;
-}
-
-
-// Libprocess statistics handle.
-// To be used from anywhere to manage statistics.
-//
-// Ex: process::statistics->increment("http", "num_requests");
-//     process::statistics->set("http", "response_size", response.size());
-//
-// Statistics are exposed via JSON for external visibility.
-extern Statistics* statistics;
-
-const Duration STATISTICS_TRUNCATION_INTERVAL = Minutes(5);
-
-// Provides an in-memory time series of statistics over some window
-// (values are truncated outside of the window, but no limit is
-// currently placed on the number of values within a window).
-//
-// TODO(bmahler): Time series granularity should be coarsened over
-// time. This means, for high-frequency statistics, we keep a lot of
-// recent data points (fine granularity), and keep fewer older data
-// points (coarse granularity). The tunable bit here could be the
-// total number of data points to keep around, which informs how
-// often to delete older data points, while still keeping a window
-// worth of data.
-class Statistics
+// Represents statistics for a `TimeSeries` of data or a standard container.
+template <typename T>
+struct Statistics
 {
-public:
-  Statistics(const Duration& window);
-  ~Statistics();
-
-  // Returns the time series of a statistic.
-  process::Future<std::map<Time, double> > timeseries(
-      const std::string& context,
-      const std::string& name,
-      const Option<Time>& start = None(),
-      const Option<Time>& stop = None());
-
-  // Returns the latest value of a statistic.
-  process::Future<Option<double> > get(
-      const std::string& context,
-      const std::string& name);
-
-  // Returns the latest values of all statistics in the context.
-  process::Future<std::map<std::string, double> > get(
-      const std::string& context);
-
-  // Adds a meter for the statistic with the provided context and name.
-  //   get(context, meter->name) will return the metered time series.
-  // Returns an error if:
-  //   -meter->name == name, or
-  //   -The meter already exists.
-  Future<Try<Nothing> > meter(
-      const std::string& context,
-      const std::string& name,
-      Owned<meters::Meter> meter);
-
-  // Sets the current value of a statistic at the current clock time
-  // or at a specified time.
-  void set(
-      const std::string& context,
-      const std::string& name,
-      double value,
-      const Time& time = Clock::now());
-
-  // Archives the provided statistic time series, and any meters associated
-  // with it. This means three things:
-  //   1. The statistic will no longer be part of the snapshot.
-  //   2. However, the time series will be retained until the window expiration.
-  //   3. All meters associated with this statistic will be removed, both
-  //      (1) and (2) will apply to the metered time series as well.
-  void archive(const std::string& context, const std::string& name);
-
-  // Increments the current value of a statistic. If no statistic was
-  // previously present, an initial value of 0.0 is used.
-  void increment(const std::string& context, const std::string& name);
-
-  // Decrements the current value of a statistic. If no statistic was
-  // previously present, an initial value of 0.0 is used.
-  void decrement(const std::string& context, const std::string& name);
-
-private:
-  StatisticsProcess* process;
-};
-
-
-namespace meters {
-
-// This is the interface for statistical meters.
-// Meters provide additional metering on top of the raw statistical
-// value. Ex: Track the maximum, average, rate, etc.
-class Meter
-{
-protected:
-  Meter(const std::string& _name) : name(_name) {}
-
-public:
-  virtual ~Meter() {}
-
-  // Updates the meter with another input value.
-  // Returns the new metered value, or none if no metered value can be produced.
-  virtual Option<double> update(const Time& time, double value) = 0;
-
-  const std::string name;
-};
-
-
-// Tracks the percent of time 'used' since the last update.
-// Input values to this meter must be in seconds.
-class TimeRate : public Meter
-{
-public:
-  TimeRate(const std::string& name)
-    : Meter(name), time(None()), value(0) {}
-
-  virtual ~TimeRate() {}
-
-  virtual Option<double> update(const Time& _time, double _value)
+  // Returns `Statistics` for the given `TimeSeries`, or `None` if the
+  // `TimeSeries` has less then 2 datapoints.
+  //
+  // TODO(dhamon): Consider adding a histogram abstraction for better
+  // performance.
+  //
+  // Remove this specification once we can construct directly from
+  // `TimeSeries<T>::Value`, e.g., by using an iterator adaptor, see
+  // https://www.boost.org/doc/libs/1_51_0/libs/range/doc/html/range/reference/adaptors/reference/map_values.html // NOLINT(whitespace/line_length)
+  static Option<Statistics<T>> from(const TimeSeries<T>& timeseries)
   {
-    Option<double> rate;
-    if (time.isSome()) {
-      rate = (_value - value) / (_time - time.get()).secs();
+    std::vector<typename TimeSeries<T>::Value> values_ = timeseries.get();
+
+    std::vector<T> values;
+    values.reserve(values_.size());
+
+    foreach (const typename TimeSeries<T>::Value& value, values_) {
+      values.push_back(value.data);
     }
 
-    time = _time;
-    value = _value;
-    return rate;
+    return from(std::move(values));
   }
 
+  // Returns `Statistics` for the given container, or `None` if the container
+  // has less then 2 datapoints. The container is represented as a pair of
+  // [first, last) iterators.
+  //
+  // TODO(alexr): Consider relaxing the collection type requirement to
+  // `std::is_convertible<std::iterator_traits<It>::value_type, T>`.
+  template <
+      typename It,
+      typename = typename std::enable_if<
+          std::is_same<
+              typename std::iterator_traits<It>::value_type,
+              T>::value &&
+          std::is_convertible<
+              typename std::iterator_traits<It>::iterator_category,
+              std::forward_iterator_tag>::value>::type>
+  static Option<Statistics<T>> from(It first, It last)
+  {
+    // Copy values into a vector.
+    std::vector<T> values;
+    values.reserve(std::distance(first, last));
+
+    std::copy(first, last, std::back_inserter(values));
+
+    return from(std::move(values));
+  }
+
+  size_t count;
+
+  T min;
+  T max;
+
+  // TODO(dhamon): Consider making the percentiles we store dynamic.
+  T p25;
+  T p50;
+  T p75;
+  T p90;
+  T p95;
+  T p99;
+  T p999;
+  T p9999;
+
 private:
-  Option<Time> time;
-  double value;
+  // Calculates `Statistics` from the provided vector; note pass by reference.
+  static Option<Statistics<T>> from(std::vector<T>&& values)
+  {
+    // We need at least 2 values to compute aggregates.
+    if (values.size() < 2) {
+      return None();
+    }
+
+    std::sort(values.begin(), values.end());
+
+    Statistics statistics;
+
+    statistics.count = values.size();
+
+    statistics.min = values.front();
+    statistics.max = values.back();
+
+    statistics.p25 = percentile(values, 0.25);
+    statistics.p50 = percentile(values, 0.5);
+    statistics.p75 = percentile(values, 0.75);
+    statistics.p90 = percentile(values, 0.90);
+    statistics.p95 = percentile(values, 0.95);
+    statistics.p99 = percentile(values, 0.99);
+    statistics.p999 = percentile(values, 0.999);
+    statistics.p9999 = percentile(values, 0.9999);
+
+    return statistics;
+  }
+
+  // Returns the requested percentile from the sorted values.
+  // Note that we need at least two values to compute percentiles!
+  //
+  // TODO(dhamon): Use a 'Percentage' abstraction.
+  static T percentile(const std::vector<T>& values, double percentile)
+  {
+    CHECK_GE(values.size(), 2u);
+
+    if (percentile <= 0.0) {
+      return values.front();
+    }
+
+    if (percentile >= 1.0) {
+      return values.back();
+    }
+
+    // Use linear interpolation.
+    const double position = percentile * (values.size() - 1);
+    const size_t index = static_cast<size_t>(floor(position));
+    const double delta = position - index;
+
+    CHECK_GE(index, 0u);
+    CHECK_LT(index, values.size() - 1);
+
+    return values[index] + (values[index + 1] - values[index]) * delta;
+  }
 };
 
-} // namespace meters {
 } // namespace process {
 
 #endif // __PROCESS_STATISTICS_HPP__

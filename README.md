@@ -1,5 +1,47 @@
 # Libprocess User Guide
 
+### Bazel
+
+Follows a "repos/deps" pattern (in order to help with recursive dependencies). To use:
+
+1. Copy `bazel/repos.bzl` into your repository at `3rdparty/libprocess/repos.bzl` and add an empty `BUILD` (or `BUILD.bazel`) to `3rdparty/libprocess` as well.
+
+2. Copy all of the directories from `3rdparty` that you ***don't*** already have in ***your*** repository's `3rdparty` directory.
+
+3. Either ... add the following to your `WORKSPACE` (or `WORKSPACE.bazel`):
+
+```bazel
+load("//3rdparty/libprocess:repos.bzl", libprocess_repos="repos")
+libprocess_repos()
+
+load("@com_github_3rdparty_libprocess//bazel:deps.bzl", libprocess_deps="deps")
+libprocess_deps()
+```
+
+Or ... to simplify others depending on ***your*** repository, add the following to your `repos.bzl`:
+
+```bazel
+load("//3rdparty/libprocess:repos.bzl", libprocess="repos")
+
+def repos():
+    libprocess()
+```
+
+And the following to your `deps.bzl`:
+
+```bazel
+load("@com_github_3rdparty_libprocess//bazel:deps.bzl", libprocess="deps")
+
+def deps():
+    libprocess()
+```
+
+4. You can then use `@com_github_3rdparty_libprocess//:process` in your target's `deps`.
+
+5. Repeat the steps starting at (1) at the desired version of this repository that you want to use.
+
+------------------------
+
 libprocess provides general primitives and abstractions for asynchronous programming with [futures/promises](https://en.wikipedia.org/wiki/Futures_and_promises), [HTTP](https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol), and [actors](http://en.wikipedia.org/wiki/Actor_model).
 
 > <br> **Inspired by [Erlang](http://erlang.org), libprocess gets it's name from calling an "actor" a "process" (not to be confused by an operating system process).** <br><br>

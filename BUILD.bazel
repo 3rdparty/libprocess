@@ -1,0 +1,39 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+cc_library(
+    name = "process",
+    visibility = ["//visibility:public"],
+    hdrs = glob([
+        "include/process/*.hpp",
+        "include/process/**/*.hpp",
+    ]),
+    strip_include_prefix = "include",
+    # NOTE: because some subdirectories include "event_loop.hpp" need
+    # to include top-level src directory.
+    includes = ["src"],
+    srcs = glob(
+        include = [
+            "src/*.hpp",
+            "src/*.cpp",
+            "src/**/*.hpp",
+            "src/**/*.cpp",
+        ],
+        exclude = [
+            "src/grpc.cpp",
+            "src/jwt*.cpp",
+            "src/openssl.cpp",
+            "src/ssl/utilities.cpp",
+            "src/tests/*",
+            "src/windows/*.cpp",
+            "src/posix/libev/*.cpp",
+            "src/posix/libevent/libevent_ssl_socket.cpp",
+        ],
+    ),
+    deps = [
+        "@com_github_3rdparty_stout//:stout",
+        "@com_github_google_glog//:glog",
+        "@com_github_nodejs_http_parser//:http_parser",
+        "@net_zlib_zlib//:zlib",
+        "@com_github_libevent_libevent//:event",
+    ],
+)

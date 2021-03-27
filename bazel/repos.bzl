@@ -18,6 +18,7 @@ def repos(*, external = True, repo_mapping = {}):
             urls = ["https://github.com/gflags/gflags/archive/v2.2.2.tar.gz"],
             sha256 = "34af2f15cf7367513b352bdcd2493ab14ce43692d2dcd9dfc499492966c64dcf",
             strip_prefix = "gflags-2.2.2",
+            repo_mapping = repo_mapping,
         )
 
     if "com_github_google_glog" not in native.existing_rules():
@@ -26,12 +27,14 @@ def repos(*, external = True, repo_mapping = {}):
             urls = ["https://github.com/google/glog/archive/d516278b1cd33cd148e8989aec488b6049a4ca0b.zip"],
             sha256 = "62efeb57ff70db9ea2129a16d0f908941e355d09d6d83c9f7b18557c0a7ab59e",
             strip_prefix = "glog-d516278b1cd33cd148e8989aec488b6049a4ca0b",
+            repo_mapping = repo_mapping,
         )
 
     if external and "com_github_3rdparty_libprocess" not in native.existing_rules():
         git_repository(
             name = "com_github_3rdparty_libprocess",
-            commit = "",
+            commit = "7d6f7df757b8394793b9c8b954a9d66b82997ddd",
             remote = "https://github.com/3rdparty/libprocess",
-            shallow_since = "",
+            shallow_since = "1616867519 -0700",
+            repo_mapping = repo_mapping,
         )
